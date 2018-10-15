@@ -92,6 +92,7 @@ def get_user_by_id(id):
 def check_can_create_projects(user_id):
     """
     指定したユーザがプロジェクトを作成できるかのチェック
+    デコレータでいいかも
     """
     user = get_user_by_id(user_id)
     return user.projects_create
@@ -100,10 +101,6 @@ def create_project(project_name, user_id):
     """
     プロジェクトを作成する
     それと同時にユーザ×プロジェクトも作成する
-
-    のちにグループも作らないといけないね
-    というか、ユーザ×プロジェクトとグループ×プロジェクトの作成は
-    デコレータが適任かも？
     """
     # プロジェクト作成
     project = Projects(project_name, str(uuid.uuid4()), user_id)
@@ -156,6 +153,7 @@ def get_user_projects(user_id, project_uuid):
 def check_can_delete_projects(user_id, project_uuid):
     """
     指定したユーザが指定したプロジェクト情報を削除できるかの判定
+    デコレータでいいかも
     """
     userproject = get_user_projects(user_id, project_uuid)
     return userproject.project_delete

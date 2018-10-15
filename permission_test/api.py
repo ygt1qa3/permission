@@ -66,6 +66,3 @@ def change_users(user_id):
     else:
         session['user_id'] = TEST_USER2_ID
     return redirect(url_for('fetch_projects'))
-
-if __name__ == '__main__':
-    app.run()

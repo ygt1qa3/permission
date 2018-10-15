@@ -7,6 +7,7 @@ class FlaskWithHamlish(Flask):
     jinja_options = ImmutableDict(extensions=[HamlishExtension])
 
 app = FlaskWithHamlish('kskp_perm')
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://dev:secret@0.0.0.0:5432/dev"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.secret_key = 'hogehoge'

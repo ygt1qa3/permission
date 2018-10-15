@@ -5,10 +5,6 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from permission_test import app
 import permission_test.models as models
-# sqliteに書き換え（ローカルでテストできるように sqliteが入っていることが必須だが）
-# わざわざテストする度にpostgresのサーバ立てるのもあれだし
-# データの置き場が変わるだけで、コードの記述方法は変わらないのでsqliteの代用でいいかな
-# jsonbがpostgres限定なので、そこどうするか
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 db = models.db
 
@@ -114,9 +110,23 @@ class ModelTestCase(unittest.TestCase):
         self.assertEqual(projects_for_user2[0].name, project_name_2)
         self.assertEqual(projects_for_user2[1].name, project_name_3)
 
+    def test_can_create_projects(self):
+        """
+        プロジェクト作成権限を持っているかどうかの判定のテスト（作成権限を持っている）
+        ユーザ作成時のデフォルトは作成できる
+        """
+        # ユーザ作成
+        email1 = 'user1@kskp.io'
+        models.create_user('ユーザ１', email1, '')
+        user1 = db.session.query(models.Users).filter_by(email=email1).first()
+
+        # テスト
+        can_create_projects = models.check_can_create_projects(user1.id)
+        self.assertEqual(can_create_projects, True)
+
     def test_cannot_create_projects(self):
         """
-        プロジェクト作成権限のないユーザがプロジェクトを作成できないことを確認するテスト
+        プロジェクト作成権限を持っているかどうかの判定のテスト（作成権限を持たない）
         """
         # ユーザ作成
         email1 = 'user1@kskp.io'
@@ -132,9 +142,9 @@ class ModelTestCase(unittest.TestCase):
         can_create_projects = models.check_can_create_projects(user1.id)
         self.assertEqual(can_create_projects, False)
 
-    def test_can_delete_project(self):
+    def test_delete_project(self):
         """
-        プロジェクト削除権限を持つユーザがプロジェクトを削除できることを確認するテスト
+        プロジェクトの削除のテスト
         """
         # ユーザ作成
         email1 = 'user1@kskp.io'
@@ -151,10 +161,6 @@ class ModelTestCase(unittest.TestCase):
         project_uuid = before_project[0].uuid
         project_id = before_project[0].id
 
-        # 権限確認
-        before_userproject = db.session.query(models.UserProjects).filter_by(project_id=project_id, user_id=user.id).all()
-        self.assertEqual(before_userproject[0].project_delete, True)
-
         # 削除
         models.delete_project_by_uuid(project_uuid)
 
@@ -165,8 +171,50 @@ class ModelTestCase(unittest.TestCase):
         self.assertEqual(after_projects, 0)
         self.assertEqual(after_userprojects, 0)
 
+    def test_can_delete_project(self):
+        """
+        個別のプロジェクトの対して、削除権限を持っているかどうかの判定のテスト（削除権限を持っている）
+        """
+        # ユーザ作成
+        email1 = 'user1@kskp.io'
+        models.create_user('ユーザ１', email1, '')
+        user = db.session.query(models.Users).filter_by(email=email1).first()
+
+        # 作成するプロジェクト情報
+        project_name = 'ユーザ１用プロジェクト'
+        # プロジェクト作成
+        models.create_project(project_name, user.id)
+        # プロジェクトUUID取得
+        before_project = db.session.query(models.Projects).all()
+        project_uuid = before_project[0].uuid
+
+        # 権限確認
+        userproject = models.get_user_projects(user.id, project_uuid)
+        self.assertEqual(userproject.project_delete, True)
+
     def test_cannot_delete_project(self):
         """
-        プロジェクト削除権限を持たないユーザがプロジェクトを削除できないことを確認するテスト
+        個別のプロジェクトの対して、削除権限を持っているかどうかの判定のテスト（削除権限を持っている）
         """
-        pass
+        # ユーザ作成
+        email1 = 'user1@kskp.io'
+        models.create_user('ユーザ１', email1, '')
+        user = db.session.query(models.Users).filter_by(email=email1).first()
+
+        # 作成するプロジェクト情報
+        project_name = 'ユーザ１用プロジェクト'
+        # プロジェクト作成
+        models.create_project(project_name, user.id)
+        # プロジェクトUUID取得
+        before_project = db.session.query(models.Projects).all()
+        project_uuid = before_project[0].uuid
+
+        # 権限確認
+        userproject = models.get_user_projects(user.id, project_uuid)
+        # 権限変更
+        userproject.project_delete = False
+        db.session.add(userproject)
+        db.session.commit()
+
+        can_delete_project = models.check_can_delete_projects(user.id, project_uuid)
+        self.assertEqual(can_delete_project, False)

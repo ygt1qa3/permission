@@ -7,16 +7,17 @@ from .models import (
     UserProjects,
     Flows,
     db,
-    select_user_by_id,
+    get_user_by_id,
     get_readable_projects_by_user_id,
-    select_flows_by_project_uuid,
+    get_flows_by_project_uuid,
     check_can_create_projects,
     create_project,
-    delete_project_by_uuid
+    delete_project_by_uuid,
+    check_can_delete_projects
     )
 
-TEST_USER1_ID = 1
-TEST_USER2_ID = 2
+TEST_USER1_ID = '1'
+TEST_USER2_ID = '2'
 
 @app.route('/')
 def init():
@@ -25,15 +26,15 @@ def init():
 @app.route('/flows')
 def flows():
     project_uuid = request.args.get('project')
-    flows = select_flows_by_project_uuid(project_uuid)
+    flows = get_flows_by_project_uuid(project_uuid)
     return render_template('flows.html', flows=flows)
 
 @app.route('/projects', methods=['GET'])
 def fetch_projects():
     if session.get('user_id') is None:
         session['user_id'] = 1
-    user = select_user_by_id(session['user_id'])
-    projects_create_permission = select_user_by_id(session['user_id']).projects_create
+    user = get_user_by_id(session['user_id'])
+    projects_create_permission = get_user_by_id(session['user_id']).projects_create
     projects = get_readable_projects_by_user_id(session['user_id'])
     return render_template('projects.html', projects=projects, create_permission=projects_create_permission, user=user)
 
@@ -51,12 +52,16 @@ def new_project():
 
 @app.route('/project/<project_uuid>', methods=['POST'])
 def delete_project(project_uuid):
+    # 削除できるかのチェック
+    if not check_can_delete_projects(session['user_id'], project_uuid):
+        return redirect(url_for('fetch_projects'))
+
     delete_project_by_uuid(project_uuid)
     return redirect(url_for('fetch_projects'))
 
 @app.route('/user/<user_id>', methods=['POST'])
 def change_users(user_id):
-    if user_id == '1':
+    if user_id == TEST_USER1_ID:
         session['user_id'] = TEST_USER1_ID
     else:
         session['user_id'] = TEST_USER2_ID

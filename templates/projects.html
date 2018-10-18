@@ -28,7 +28,7 @@
                 <a href="/flows?project={{project.uuid}}">{{project.name}}</a>
               </td>
               <td>
-                <button type="submit" onclick="submitAction('/project/{{project.uuid}}', 'project_list')" {% if not project.project_delete %}disabled{% endif %}>削除</button>
+                <button type="submit" onclick="submitAction('/project/{{project['uuid']}}', 'project_list')" {% if not project['deletable_project'] %}disabled{% endif %}>削除</button>
               </td>
             </tr>
           {% endfor %}

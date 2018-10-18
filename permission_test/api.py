@@ -4,16 +4,15 @@ from . import app
 from .models import (
     Users,
     Projects,
-    UserProjects,
+    UserPermissionsProject,
     Flows,
     db,
     get_user_by_id,
-    get_readable_projects_by_user_id,
+    get_projects_add_permission,
     get_flows_by_project_uuid,
-    check_can_create_projects,
+    get_creatable_projects_by_user_id,
     create_project,
-    delete_project_by_uuid,
-    check_can_delete_projects
+    delete_project_and_permission
     )
 
 TEST_USER1_ID = '1'
@@ -34,14 +33,14 @@ def fetch_projects():
     if session.get('user_id') is None:
         session['user_id'] = 1
     user = get_user_by_id(session['user_id'])
-    projects_create_permission = get_user_by_id(session['user_id']).projects_create
-    projects = get_readable_projects_by_user_id(session['user_id'])
-    return render_template('projects.html', projects=projects, create_permission=projects_create_permission, user=user)
+    creatable_projects_permission = get_user_by_id(session['user_id']).creatable_projects
+    projects = get_projects_add_permission(session['user_id'])
+    return render_template('projects.html', projects=projects, create_permission=creatable_projects_permission, user=user)
 
 @app.route('/projects', methods=['POST'])
 def new_project():
     # 作成できるかチェック
-    if not check_can_create_projects(session['user_id']):
+    if not get_creatable_projects_by_user_id(session['user_id']):
         return redirect(url_for('fetch_projects'))
 
     # プロジェクト作成
@@ -52,12 +51,8 @@ def new_project():
 
 @app.route('/project/<project_uuid>', methods=['POST'])
 def delete_project(project_uuid):
-    # 削除できるかのチェック
-    if not check_can_delete_projects(session['user_id'], project_uuid):
-        return redirect(url_for('fetch_projects'))
-
-    delete_project_by_uuid(project_uuid)
-    return redirect(url_for('fetch_projects'))
+    deleted_status = delete_project_and_permission(session['user_id'], project_uuid)
+    return redirect(url_for('fetch_projects', deleted_status=deleted_status))
 
 @app.route('/user/<user_id>', methods=['POST'])
 def change_users(user_id):

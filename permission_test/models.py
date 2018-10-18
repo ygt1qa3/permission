@@ -8,17 +8,35 @@ class Users(db.Model):
     """
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    group_id = db.Column(db.ForeignKey('groups.id'))
     name = db.Column(db.String(64))
     email = db.Column(db.String(256), unique=True)
     password = db.Column(db.String(64))
-    projects_create = db.Column(db.Boolean)
-    users_projects = db.relationship('UserProjects')
+    creatable_projects = db.Column(db.Boolean)
+    userpermissions_project = db.relationship('UserPermissionsProject')
 
-    def __init__(self, username, email, password, projects_create):
+    def __init__(self, username, email, password, creatable_projects):
         self.name = username
         self.email = email
         self.password = password
-        self.projects_create = projects_create
+        self.creatable_projects = creatable_projects
+
+class Groups(db.Model):
+    """
+    Groupsモデル
+    """
+    __tablename__ = 'groups'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(64))
+    # グループにプロジェクト作成権限はいらないかも。
+    # グループにはユーザ（DB上に存在する）が所属する。
+    # また、前提として必ずユーザにはプロジェクト作成に関する権限が設定されており、
+    # ユーザの権限がグループの権限より優先されることから、必ずグループに所属しているいないに関わらずユーザのプロジェクト作成権限が使われる。
+    creatable_projects = db.Column(db.Boolean)
+
+    def __init__(self, group_name, creatable_projects):
+        self.name = group_name
+        self.creatable_projects = creatable_projects
 
 class Projects(db.Model):
     """
@@ -29,7 +47,8 @@ class Projects(db.Model):
     name = db.Column(db.String(64))
     uuid = db.Column(db.String(256), unique=True)
     creator_id = db.Column(db.Integer)
-    users_projects = db.relationship('UserProjects')
+
+    userpermissions_project = db.relationship('UserPermissionsProject')
     flows = db.relationship('Flows')
 
     def __init__(self, name, uuid, creator_id):
@@ -52,55 +71,95 @@ class Flows(db.Model):
         self.project_id = project_id
         self.creator_id = creator_id
 
-class UserProjects(db.Model):
+class UserPermissionsProject(db.Model):
     """
-    UserProjectsモデル
+    UserPermissionsProjectモデル
     """
-    __tablename__ = 'user_projects'
+    __tablename__ = 'userpermissions_project'
     __table_args__ = (
         db.PrimaryKeyConstraint('user_id', 'project_id'),
     )
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
-    project_delete = db.Column(db.Boolean, default=True)
-    flow_create = db.Column(db.Boolean, default=True)
-    flow_delete = db.Column(db.Boolean, default=True)
-    flow_update = db.Column(db.Boolean, default=True)
-    flow_execute = db.Column(db.Boolean, default=True)
-    flow_read = db.Column(db.Boolean, default=True)
+    deletable_project = db.Column(db.Boolean, default=True)
+    creatable_flows = db.Column(db.Boolean, default=True)
+    deletable_flows = db.Column(db.Boolean, default=True)
+    updatable_flows = db.Column(db.Boolean, default=True)
+    executable_flows = db.Column(db.Boolean, default=True)
+    readable_flows = db.Column(db.Boolean, default=True)
 
-    def __init__(self, project_id, user_id):
+    def __init__(self, user_id, project_id, deletable_project=True, creatable_flows=True,
+                 deletable_flows=True, updatable_flows=True, executable_flows=True, readable_flows=True):
         self.user_id = user_id
         self.project_id = project_id
+        self.deletable_project = deletable_project
+        self.creatable_flows = creatable_flows
+        self.deletable_flows = deletable_flows
+        self.updatable_flows = updatable_flows
+        self.executable_flows = executable_flows
+        self.readable_flows = readable_flows
 
+class GroupPermissionsProject(db.Model):
+    """
+    GroupPermissionsProjectモデル
+    """
+    __tablename__ = 'grouppermissions_project'
+    __table_args__ = (
+        db.PrimaryKeyConstraint('group_id', 'project_id'),
+    )
+    group_id = db.Column(db.Integer, db.ForeignKey('groups.id'))
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
+    deletable_project = db.Column(db.Boolean, default=False)
+    creatable_flows = db.Column(db.Boolean, default=False)
+    deletable_flows = db.Column(db.Boolean, default=False)
+    updatable_flows = db.Column(db.Boolean, default=False)
+    executable_flows = db.Column(db.Boolean, default=True)
+    readable_flows = db.Column(db.Boolean, default=True)
 
-def create_user(name, email, password, projects_create=True):
+    # グループの初期パーミッションをlinuxのディレクトリの初期パーミッションと同じにするなら、
+    # linuxは初期umaskが022で、グループのパーミッションは5(r-x)になるので、
+    # できることは、プロジェクト配下の「フロー一覧が見える、フローデザイナが見える、フローが実行できる」となり
+    # それ以外はFalseになる、とりあえずこの方向で。
+
+    def __init__(self, group_id, project_id, deletable_project=False, creatable_flows=False,
+                 deletable_flows=False, updatable_flows=False, executable_flows=True, readable_flows=True):
+        self.group_id = group_id
+        self.project_id = project_id
+        self.deletable_project = deletable_project
+        self.creatable_flows = creatable_flows
+        self.deletable_flows = deletable_flows
+        self.updatable_flows = updatable_flows
+        self.executable_flows = executable_flows
+        self.readable_flows = readable_flows
+
+def create_user(name, email, password, creatable_projects=True):
     """
     ユーザを作成する
+    プロジェクト作成権限はとりあえず、デフォルトでTrueに。
     """
-    user = Users(name, email, password, projects_create)
+    user = Users(name, email, password, creatable_projects)
     db.session.add(user)
     db.session.commit()
 
-def get_user_by_id(id):
+def get_user_by_id(user_id):
     """
     ユーザのIDからユーザ情報を取得する
     """
-    user = db.session.query(Users).filter_by(id=id).first()
+    user = db.session.query(Users).filter_by(id=user_id).first()
     return user
 
-def check_can_create_projects(user_id):
+def get_creatable_projects_by_user_id(user_id):
     """
     指定したユーザがプロジェクトを作成できるかのチェック
-    デコレータでいいかも
     """
     user = get_user_by_id(user_id)
-    return user.projects_create
+    return user.creatable_projects
 
 def create_project(project_name, user_id):
     """
     プロジェクトを作成する
     それと同時にユーザ×プロジェクトも作成する
+    また、ユーザがグループに所属していた場合、グループ×プロジェクトも作成する
     """
     # プロジェクト作成
     project = Projects(project_name, str(uuid.uuid4()), user_id)
@@ -108,20 +167,37 @@ def create_project(project_name, user_id):
     db.session.commit()
 
     # ユーザ×プロジェクト作成
-    userproject = UserProjects(project.id, user_id)
-    db.session.add(userproject)
+    userpermission_project = UserPermissionsProject(user_id, project.id)
+    db.session.add(userpermission_project)
 
+    # ユーザがグループに所属していた場合、グループ×プロジェクトも作成する
+    user = get_user_by_id(user_id)
+    if not user.group_id is None:
+        grouppermission_project = GroupPermissionsProject(user.group_id, project.id)
+        db.session.add(grouppermission_project)
+
+    # コミット
+    db.session.commit()
+
+def commission_user_to_project(user_id, project_id, deletable_project=True, creatable_flows=True,
+                               deletable_flows=True, updatable_flows=True, executable_flows=True, readable_flows=True):
+    """
+    指定したユーザとプロジェクトに対する権限を新規作成する
+    """
+    userpermission_project = UserPermissionsProject(user_id, project_id,
+                                                    deletable_project,
+                                                    creatable_flows, deletable_flows, updatable_flows, executable_flows, readable_flows)
+    db.session.add(userpermission_project)
     db.session.commit()
 
 def get_readable_projects_by_user_id(user_id):
     """
-    自分が閲覧できるプロジェクト一覧を取得する
+    指定したユーザが閲覧できるプロジェクト一覧を取得する
     """
-    # projects = db.session.query(Projects).filter(Projects.id.in_(db.session.query(UserProjects.project_id).filter(UserProjects.user_id==user_id)))
-    projects = db.session.query(Projects, UserProjects) \
-                                .join(UserProjects, Projects.id==UserProjects.project_id) \
-                                .add_columns(Projects.name, Projects.id, Projects.uuid, Projects.creator_id, UserProjects.project_delete) \
-                                .filter(UserProjects.user_id==user_id)
+    # projects = db.session.query(Projects).filter(Projects.id.in_(db.session.query(UserPermissionsProject.project_id).filter(UserPermissionsProject.user_id==user_id)))
+    projects = db.session.query(Projects, UserPermissionsProject) \
+                                .join(UserPermissionsProject, Projects.id==UserPermissionsProject.project_id) \
+                                .filter(UserPermissionsProject.user_id==user_id)
     return projects
 
 def get_all_projects():
@@ -131,32 +207,188 @@ def get_all_projects():
     projects = db.session.query(Projects).all()
     return projects
 
+def delete_project_and_permission(user_id, project_uuid):
+    """
+    指定したプロジェクトを削除する
+    ユーザの操作として削除するので、権限を考慮する
+    """
+    # 権限の取得
+    project_permission = get_permissions_project(user_id, project_uuid)
+
+    if project_permission is None:
+        # 指定したユーザと所属しているグループ、プロジェクトの間にはなんの権限もない
+        return False
+
+    if project_permission.deletable_project:
+        delete_project_by_uuid(project_uuid)
+        return True
+    return False
+
 def delete_project_by_uuid(project_uuid):
     """
     指定したプロジェクトを削除する
     ユーザ×プロジェクトも削除する
+    グループ×プロジェクトも削除する
     """
     project = db.session.query(Projects).filter_by(uuid=project_uuid).first()
-    db.session.query(UserProjects).filter_by(project_id=project.id).delete()
+    db.session.query(UserPermissionsProject).filter_by(project_id=project.id).delete()
+    db.session.query(GroupPermissionsProject).filter_by(project_id=project.id).delete()
     db.session.delete(project)
     db.session.commit()
 
-def get_user_projects(user_id, project_uuid):
+def get_userpermissions_project(user_id, project_id):
     """
     指定したユーザ×プロジェクト情報を取得する
     """
-    user = get_user_by_id(user_id)
-    project = db.session.query(Projects).filter_by(uuid=project_uuid).first()
-    userproject = db.session.query(UserProjects).filter_by(project_id=project.id, user_id=user.id).first()
+    userproject = db.session.query(UserPermissionsProject).filter_by(project_id=project_id, user_id=user_id).first()
     return userproject
 
-def check_can_delete_projects(user_id, project_uuid):
+def create_group(name, creatable_projects=True):
     """
-    指定したユーザが指定したプロジェクト情報を削除できるかの判定
-    デコレータでいいかも
+    グループを作成する
     """
-    userproject = get_user_projects(user_id, project_uuid)
-    return userproject.project_delete
+    group = Groups(name, creatable_projects)
+    db.session.add(group)
+    db.session.commit()
+
+def delete_group_by_id(group_id):
+    """
+    指定したグループを削除する
+    """
+    group = get_group_by_id(group_id)
+    db.session.delete(group)
+    db.session.commit()
+
+def get_group_by_id(id):
+    """
+    グループのIDからユーザ情報を取得する
+    """
+    group = db.session.query(Groups).filter_by(id=id).first()
+    return group
+
+def get_group_from_user_id(user_id):
+    """
+    指定したユーザが所属しているグループを取得する
+    """
+    user = get_user_by_id(user_id)
+    group = get_group_by_id(user.group_id)
+    return group
+
+def assign_user_to_group(user_id, group_id):
+    """
+    指定したユーザを指定したグループに所属させる
+    すでに所属していた場合は上書きする（ひとまずの仕様）
+    """
+    user = get_user_by_id(user_id)
+    user.group_id = group_id
+    db.session.add(user)
+    db.session.commit()
+
+def get_readable_projects_by_group_id(group_id):
+    """
+    指定したグループが閲覧できるプロジェクト一覧を取得する
+    """
+    projects = db.session.query(Projects, GroupPermissionsProject) \
+                                .join(GroupPermissionsProject, Projects.id==GroupPermissionsProject.project_id) \
+                                .filter(GroupPermissionsProject.group_id==group_id)
+    return projects
+
+def commission_group_to_project(group_id, project_id, deletable_project=False, creatable_flows=False,
+                                deletable_flows=False, updatable_flows=False, executable_flows=True, readable_flows=True):
+    """
+    指定したグループとプロジェクトに対する権限を新規作成する
+    """
+    grouppermission_project = GroupPermissionsProject(group_id, project_id,
+                                                      deletable_project,
+                                                      creatable_flows, deletable_flows, updatable_flows, executable_flows, readable_flows)
+    db.session.add(grouppermission_project)
+    db.session.commit()
+
+def get_grouppermissions_project(group_id, project_id):
+    """
+    指定したグループ×プロジェクトを返す
+    """
+    userproject = db.session.query(GroupPermissionsProject).filter_by(project_id=project_id, group_id=group_id).first()
+    return userproject
+
+def get_permissions_project(user_id, project_uuid):
+    """
+    適切なプロジェクト権限を返す
+    ユーザ権限が存在する場合はそちらを優先する
+    返す権限が存在しなければ、Noneを返す（とりあえず）
+    """
+    # プロジェクトを取得
+    project = db.session.query(Projects).filter_by(uuid=project_uuid).first()
+
+    # ユーザ×プロジェクトがあればそれを返す
+    userpermission_project = get_userpermissions_project(user_id, project.id)
+    if not userpermission_project is None:
+        return userpermission_project
+
+    # グループに所属しているか調べる
+    group = get_group_from_user_id(user_id)
+    # 所属していなければ、返す権限が存在しないのでNoneを返す
+    if group is None:
+        return None
+
+    # ユーザ×プロジェクトがなく、グループ×プロジェクトがあればそれを返す
+    grouppermission_project = get_grouppermissions_project(group.id, project.id)
+    if not grouppermission_project is None:
+        return grouppermission_project
+
+    return None
+
+def get_projects_add_permission(user_id):
+    """
+    プロジェクト一覧を権限付きで返す
+
+    UserPermissionsProjectとProjectsを結合したもの
+    GroupPermissionsProjectとProjectsを結合したもの
+    2つの結果を基に作成している
+
+    ユーザのパーミッションの方が優先なので、
+    まずUserPermissionsProjectとProjectsを結合したものを、返すリストに設定し
+    GroupPermissionsProjectにのみ設定されているプロジェクト情報を
+    返すリストに付け足している
+    """
+    projects = []
+    project_id_list = []
+
+    # ユーザ権限がついたプロジェクトを取得する
+    projects_additional_user_permissions = get_readable_projects_by_user_id(user_id)
+    for project in projects_additional_user_permissions:
+        project_id_list.append(project.Projects.id)
+        projects.append(make_projects_dict_by_result(project))
+
+    # グループに所属しているか
+    group = get_group_from_user_id(user_id)
+    if group is None:
+        return projects
+
+    # グループ権限がついたプロジェクトを取得する
+    projects_additional_group_permissions = get_readable_projects_by_group_id(group.id)
+    if projects_additional_group_permissions is None:
+        return projects
+
+    # ユーザ×プロジェクトに存在しないプロジェクトを新規に追加する
+    for project in projects_additional_group_permissions:
+        project_dict = make_projects_dict_by_result(project)
+        if not project_dict.get('id') in project_id_list:
+            projects.append(project_dict)
+
+    return projects
+
+def make_projects_dict_by_result(result):
+    """
+    指定したsqlalchemyのresultオブジェクトをdictに変換する
+    """
+    dict = {}
+    for table_model in result:
+        dict.update(
+            { column.name : getattr(table_model, column.name) \
+                           for column in table_model.__table__.columns }
+        )
+    return dict
 
 def get_flows_by_project_uuid(project_uuid):
     pass

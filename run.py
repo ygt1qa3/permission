@@ -1,5 +1,5 @@
-from permission_test.api import app
-from permission_test.models import db, create_user
+from permission_trial.api import app
+from permission_trial.models import db, create_user
 
 if __name__ == '__main__':
     db.drop_all()

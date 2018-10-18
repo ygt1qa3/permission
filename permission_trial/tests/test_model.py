@@ -3,8 +3,8 @@ import uuid
 import distutils.util
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from permission_test import app
-import permission_test.models as models
+from permission_trial import app
+import permission_trial.models as models
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 db = models.db
 

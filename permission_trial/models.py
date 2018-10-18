@@ -7,12 +7,14 @@ class Users(db.Model):
     Usersモデル
     """
     __tablename__ = 'users'
+    # カラム
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     group_id = db.Column(db.ForeignKey('groups.id'))
     name = db.Column(db.String(64))
     email = db.Column(db.String(256), unique=True)
     password = db.Column(db.String(64))
     creatable_projects = db.Column(db.Boolean)
+    # リレーション
     userpermissions_project = db.relationship('UserPermissionsProject')
 
     def __init__(self, username, email, password, creatable_projects):
@@ -26,13 +28,15 @@ class Groups(db.Model):
     Groupsモデル
     """
     __tablename__ = 'groups'
+    # カラム
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(64))
+    # リレーション
+    creatable_projects = db.Column(db.Boolean)
     # グループにプロジェクト作成権限はいらないかも。
     # グループにはユーザ（DB上に存在する）が所属する。
     # また、ユーザにはプロジェクト作成に関する権限が設定されており、
     # ユーザの権限がグループの権限より優先されることから、グループに所属しているいないに関わらずユーザのプロジェクト作成権限が存在するのでそれが使われる。
-    creatable_projects = db.Column(db.Boolean)
 
     def __init__(self, group_name, creatable_projects):
         self.name = group_name
@@ -43,11 +47,12 @@ class Projects(db.Model):
     Projectsモデル
     """
     __tablename__ = 'projects'
+    # カラム
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(64))
     uuid = db.Column(db.String(256), unique=True)
     creator_id = db.Column(db.Integer)
-
+    # リレーション
     userpermissions_project = db.relationship('UserPermissionsProject')
     flows = db.relationship('Flows')
 
@@ -61,10 +66,12 @@ class Flows(db.Model):
     Flowsモデル
     """
     __tablename__ = 'flows'
+    # カラム
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     # flow_json = db.Column(JSONB)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
     creator_id = db.Column(db.Integer)
+    # リレーション
 
     def __init__(self, flow_json, project_id, creator_id):
         self.flow_json = flow_json
@@ -79,6 +86,7 @@ class UserPermissionsProject(db.Model):
     __table_args__ = (
         db.PrimaryKeyConstraint('user_id', 'project_id'),
     )
+    # カラム
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
     deletable_project = db.Column(db.Boolean, default=True)
@@ -107,6 +115,7 @@ class GroupPermissionsProject(db.Model):
     __table_args__ = (
         db.PrimaryKeyConstraint('group_id', 'project_id'),
     )
+    # カラム
     group_id = db.Column(db.Integer, db.ForeignKey('groups.id'))
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
     deletable_project = db.Column(db.Boolean, default=False)
@@ -220,8 +229,8 @@ def delete_project_and_permission(user_id, project_uuid):
         return False
 
     if project_permission.deletable_project:
-        delete_project_by_uuid(project_uuid)
-        return True
+        if delete_project_by_uuid(project_uuid):
+            return True
     return False
 
 def delete_project_by_uuid(project_uuid):
@@ -234,7 +243,13 @@ def delete_project_by_uuid(project_uuid):
     db.session.query(UserPermissionsProject).filter_by(project_id=project.id).delete()
     db.session.query(GroupPermissionsProject).filter_by(project_id=project.id).delete()
     db.session.delete(project)
-    db.session.commit()
+
+    try:
+        db.session.commit()
+    except:
+        return False
+
+    return True
 
 def get_userpermissions_project(user_id, project_id):
     """

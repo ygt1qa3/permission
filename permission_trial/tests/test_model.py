@@ -152,7 +152,7 @@ class ModelTestCase(unittest.TestCase):
 
         self.assertEqual(after_user.group_id, group.id)
 
-    def test_add_user_to_group(self):
+    def test_get_group(self):
         """
         ユーザの所属しているグループを取得するテスト
         """
@@ -269,7 +269,7 @@ class ModelTestCase(unittest.TestCase):
         self.assertEqual(grouppermission_projects[0].group_id, group.id)
         self.assertEqual(grouppermission_projects[0].project_id, projects[0].Projects.id)
 
-    def test_delete_project_not_belong_to_group(self):
+    def test_delete_project_belong_to_group(self):
         """
         プロジェクト削除のテスト（ユーザはグループに所属している）
         必要なデータが削除されているかのテスト

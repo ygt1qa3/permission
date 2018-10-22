@@ -90,37 +90,39 @@ def update_user_profile(user_id):
     if request.form.get('email'):
         # 新メールアドレスに確認のメールを送る
         email = request.form.get('email')
-        old_email = get_user_by_id(user_id).email
-        url = make_temporal_url_for_update_email(email, old_email)
-
-        msg = Message(
-        '【確認】KSKP用のメールアドレス変更のお知らせ',
-        sender=CONFIRM_EMAIL,
-        recipients=[email]
-        )
-        msg.html = f"""
-        <p>
-          KSKPアカウントにこのメールアドレスを登録にするには
-          <br>
-          24時間以内に<a href={url}>ここから</a>登録してください。
-        </p>
-        """
-        email_sender.send(msg)
-
-        # 旧メールアドレスに、変更がありましたメールを送る
         user = get_user_by_id(user_id)
         old_email = user.email
-        msg = Message(
-        '【確認】KSKP用のメールアドレス変更のお知らせ',
-        sender=CONFIRM_EMAIL,
-        recipients=[old_email]
-        )
-        msg.html = f"""
-        <p>
-          {user.name}様の登録されているメールアドレスが{old_email}から{email}への変更申請があったことをお知らせ致します。
-        </p>
-        """
-        email_sender.send(msg)
+        url = make_temporal_url_for_update_email(email, old_email)
+
+        with email_sender.connect() as conn:
+            msg = Message(
+            '【確認】KSKP用のメールアドレス変更のお知らせ',
+            sender=CONFIRM_EMAIL,
+            recipients=[email]
+            )
+            msg.html = f"""
+            <p>
+              {user.name}様<br>
+              登録されているメールアドレスを{old_email}から{email}への
+              <br>
+              変更を完了するには<a href={url}>こちら</a>をクリックして下さい。
+            </p>
+            """
+            conn.send(msg)
+
+            # 旧メールアドレスに、変更がありましたメールを送る
+            msg2 = Message(
+            '【確認】KSKP用のメールアドレス変更のお知らせ',
+            sender=CONFIRM_EMAIL,
+            recipients=[old_email]
+            )
+            msg2.html = f"""
+            <p>
+              {user.name}様<br>
+              メールアドレスが{old_email}から{email}への変更申請があったことをお知らせ致します。
+            </p>
+            """
+            conn.send(msg2)
 
         user = get_user_by_id(user_id)
         return render_template('profile.html', user=user)
@@ -133,6 +135,7 @@ def update_user_profile(user_id):
             return redirect(url_for('detail_users', user_id=session['user_id']))
         else:
             return redirect(url_for('detail_users', user_id=session['user_id']))
+
     print(request.form.get('current_password'), request.form.get('new_password'))
 
 @app.route('/profile/update/<mail_hash>')

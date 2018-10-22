@@ -157,6 +157,15 @@ def get_user_by_id(user_id):
     user = db.session.query(Users).filter_by(id=user_id).first()
     return user
 
+def update_user_email_by_old_email(new_email, old_email):
+    """
+    ユーザのemailを更新する
+    """
+    user = db.session.query(Users).filter_by(email=old_email).first()
+    user.email = new_email
+    db.session.add(user)
+    db.session.commit()
+
 def get_creatable_projects_by_user_id(user_id):
     """
     指定したユーザがプロジェクトを作成できるかのチェック

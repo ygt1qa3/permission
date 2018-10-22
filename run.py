@@ -5,7 +5,7 @@ if __name__ == '__main__':
     db.drop_all()
     db.create_all()
     email1 = 'user1@kskp.io'
-    create_user('ユーザ１', email1, '')
+    create_user('ユーザ１', email1, 'devpass')
     email2 = 'user2@kskp.io'
-    create_user('ユーザ2', email2, '')
+    create_user('ユーザ2', email2, 'devpass')
     app.run()

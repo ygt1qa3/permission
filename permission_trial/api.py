@@ -1,5 +1,9 @@
 import uuid
-from flask import Flask, render_template, url_for, redirect, request, session
+import time
+import hashlib
+import pathlib
+from flask import Flask, render_template, url_for, redirect, request, session, flash
+from flask_mail import Mail, Message
 from . import app
 from .models import (
     Users,
@@ -8,6 +12,7 @@ from .models import (
     Flows,
     db,
     get_user_by_id,
+    update_user_email_by_old_email,
     get_projects_add_permission,
     get_flows_by_project_uuid,
     get_creatable_projects_by_user_id,
@@ -17,6 +22,9 @@ from .models import (
 
 TEST_USER1_ID = '1'
 TEST_USER2_ID = '2'
+
+email_sender = Mail(app)
+CONFIRM_EMAIL = 'flask.mail.testtest@gmail.com'
 
 @app.route('/')
 def init():
@@ -61,3 +69,113 @@ def change_users(user_id):
     else:
         session['user_id'] = TEST_USER2_ID
     return redirect(url_for('fetch_projects'))
+
+@app.route('/profile/<user_id>', methods=['GET'])
+def detail_users(user_id):
+    """
+    自分のプロフィール情報を表示する
+    """
+    if session['user_id'] != user_id:
+        # 自分以外のプロフィールへのアクセスは禁止する（URL直接たたくなど）
+        return redirect(url_for('fetch_projects'))
+
+    user = get_user_by_id(user_id)
+    return render_template('profile.html', user=user)
+
+@app.route('/profile/<user_id>', methods=['POST'])
+def update_user_profile(user_id):
+    """
+    自分のプロフィール情報を変更する
+    """
+    if request.form.get('email'):
+        # 新メールアドレスに確認のメールを送る
+        email = request.form.get('email')
+        old_email = get_user_by_id(user_id).email
+        url = make_temporal_url_for_update_email(email, old_email)
+
+        msg = Message(
+        '【確認】KSKP用のメールアドレス変更のお知らせ',
+        sender=CONFIRM_EMAIL,
+        recipients=[email]
+        )
+        msg.html = f"""
+        <p>
+          KSKPアカウントにこのメールアドレスを登録にするには
+          <br>
+          24時間以内に<a href={url}>ここから</a>登録してください。
+        </p>
+        """
+        email_sender.send(msg)
+
+        # 旧メールアドレスに、変更がありましたメールを送る
+        user = get_user_by_id(user_id)
+        old_email = user.email
+        msg = Message(
+        '【確認】KSKP用のメールアドレス変更のお知らせ',
+        sender=CONFIRM_EMAIL,
+        recipients=[old_email]
+        )
+        msg.html = f"""
+        <p>
+          {user.name}様の登録されているメールアドレスが{old_email}から{email}への変更申請があったことをお知らせ致します。
+        </p>
+        """
+        email_sender.send(msg)
+
+        user = get_user_by_id(user_id)
+        return render_template('profile.html', user=user)
+
+    elif request.form.get('current_password') and request.form.get('new_password'):
+        success = update_password(session['user_id'], request.form.get('current_password'), request.form.get('new_password'))
+        print(success)
+        if success:
+            # 本来はどこに飛ばそう？ログイン画面かな。
+            return redirect(url_for('detail_users', user_id=session['user_id']))
+        else:
+            return redirect(url_for('detail_users', user_id=session['user_id']))
+    print(request.form.get('current_password'), request.form.get('new_password'))
+
+@app.route('/profile/update/<mail_hash>')
+def register_email(mail_hash):
+    """
+    メールの確認ができたので、アドレスを更新して画面をかえす
+    """
+    path = pathlib.Path(app.root_path + '/profile/temp/' + mail_hash + '.activate')
+    if not path.exists():
+        redirect(url_for('fetch_projects'))
+
+    with open(path.as_posix(), 'r') as f:
+        profile = f.readlines()
+
+    update_user_email_by_old_email(profile[0], profile[1])
+    path.unlink()
+
+    return redirect(url_for('fetch_projects'))
+
+def make_temporal_url_for_update_email(new_email, old_email):
+    """
+    emailアドレス更新用のURLを作成する
+    """
+    hash_target = new_email + str(time.time())
+    temp_path = hashlib.sha256(hash_target.encode()).hexdigest()
+    url = f'{request.url_root}profile/update/{temp_path}'
+    mail = [new_email, old_email]
+
+    # 一時認証ファイルを作成する
+    with open(app.root_path + '/profile/temp/' + temp_path + '.activate', 'a', encoding="utf-8") as f:
+        f.write("\n".join(mail))
+
+    return url
+
+def update_password(user_id, old_password, new_password):
+    """
+    新しいパスワードを設定する
+    古いパスワードのチェックも。
+    """
+    user = get_user_by_id(user_id)
+    if user.password != old_password:
+        return False
+    user.password = new_password
+    db.session.add(user)
+    db.session.commit()
+    return True

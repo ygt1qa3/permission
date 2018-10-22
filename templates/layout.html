@@ -12,6 +12,9 @@
       <div class="navbar-header">
         <a class="navbar-brand" href="{{ url_for('fetch_projects') }}">Permission テスト</a>
       </div>
+      <ul class="nav navbar-nav navbar-right">
+        <li class="active"><a href="/profile/{{user.id}}">ユーザプロフィール</a></li>
+      </ul>
     </div>
   </nav>
   <div class="container">

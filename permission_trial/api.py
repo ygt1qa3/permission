@@ -8,14 +8,14 @@ from . import app
 from .models import (
     Users,
     Projects,
-    UserPermissionsProject,
+    UserPermissions_Project,
     Flows,
     db,
     get_user_by_id,
     update_user_email_by_old_email,
-    get_projects_add_permission,
+    get_projects_with_permission,
     get_flows_by_project_uuid,
-    get_creatable_projects_by_user_id,
+    get_projects_creatable_by_user_id,
     create_project,
     delete_project_and_permission
     )
@@ -41,14 +41,14 @@ def fetch_projects():
     if session.get('user_id') is None:
         session['user_id'] = 1
     user = get_user_by_id(session['user_id'])
-    creatable_projects_permission = get_user_by_id(session['user_id']).creatable_projects
-    projects = get_projects_add_permission(session['user_id'])
-    return render_template('projects.html', projects=projects, create_permission=creatable_projects_permission, user=user)
+    projects_creatable_permission = get_user_by_id(session['user_id']).projects_creatable
+    projects = get_projects_with_permission(session['user_id'])
+    return render_template('projects.html', projects=projects, create_permission=projects_creatable_permission, user=user)
 
 @app.route('/projects', methods=['POST'])
 def new_project():
     # 作成できるかチェック
-    if not get_creatable_projects_by_user_id(session['user_id']):
+    if not get_projects_creatable_by_user_id(session['user_id']):
         return redirect(url_for('fetch_projects'))
 
     # プロジェクト作成

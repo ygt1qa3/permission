@@ -19,6 +19,10 @@ from .models import (
     create_project,
     delete_project_and_permission
     )
+from .profile import (
+    send_email_of_address_modification,
+    update_password
+)
 
 TEST_USER1_ID = '1'
 TEST_USER2_ID = '2'
@@ -92,37 +96,10 @@ def update_user_profile(user_id):
         email = request.form.get('email')
         user = get_user_by_id(user_id)
         old_email = user.email
-        url = make_temporal_url_for_update_email(email, old_email)
+        url = make_temporal_url_for_update_email(email, user.email)
 
         with email_sender.connect() as conn:
-            msg = Message(
-            '【確認】KSKP用のメールアドレス変更のお知らせ',
-            sender=CONFIRM_EMAIL,
-            recipients=[email]
-            )
-            msg.html = f"""
-            <p>
-              {user.name}様<br>
-              登録されているメールアドレスを{old_email}から{email}への
-              <br>
-              変更を完了するには<a href={url}>こちら</a>をクリックして下さい。
-            </p>
-            """
-            conn.send(msg)
-
-            # 旧メールアドレスに、変更がありましたメールを送る
-            msg2 = Message(
-            '【確認】KSKP用のメールアドレス変更のお知らせ',
-            sender=CONFIRM_EMAIL,
-            recipients=[old_email]
-            )
-            msg2.html = f"""
-            <p>
-              {user.name}様<br>
-              メールアドレスが{old_email}から{email}への変更申請があったことをお知らせ致します。
-            </p>
-            """
-            conn.send(msg2)
+            send_email_of_address_modification(conn, user, email, url)
 
         user = get_user_by_id(user_id)
         return render_template('profile.html', user=user)
@@ -169,16 +146,3 @@ def make_temporal_url_for_update_email(new_email, old_email):
         f.write("\n".join(mail))
 
     return url
-
-def update_password(user_id, old_password, new_password):
-    """
-    新しいパスワードを設定する
-    古いパスワードのチェックも。
-    """
-    user = get_user_by_id(user_id)
-    if user.password != old_password:
-        return False
-    user.password = new_password
-    db.session.add(user)
-    db.session.commit()
-    return True

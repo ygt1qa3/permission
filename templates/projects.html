@@ -25,7 +25,11 @@
           {% for project in projects %}
             <tr>
               <td>
-                <a href="/flows?project={{project.uuid}}">{{project.name}}</a>
+                {% if project['readable_flows'] %}
+                  <a href="/flows?project={{project.uuid}}">{{project.name}}</a>
+                {% else %}
+                  {{project.name}}
+                {% endif %}
               </td>
               <td>
                 <button type="submit" onclick="submitAction('/project/{{project['uuid']}}', 'project_list')" {% if not project['deletable_project'] %}disabled{% endif %}>削除</button>

@@ -2,6 +2,7 @@ import uuid
 import time
 import hashlib
 import pathlib
+import json
 from flask import Flask, render_template, url_for, redirect, request, session, flash
 from flask_mail import Mail, Message
 from . import app
@@ -12,15 +13,18 @@ from .models import (
     Flows,
     db,
     get_user_by_id,
-    update_user_email_by_old_email,
+    replace_user_email_with_old_email,
     get_projects_with_permission,
-    get_flows_by_project_uuid,
     get_projects_creatable_by_user_id,
     create_project,
-    delete_project_and_permission
+    delete_project_and_permission,
+    get_flows_with_permission,
+    get_permissions_project,
+    create_flow,
+    make_projects_dict_from_result
     )
 from .profile import (
-    send_email_of_address_modification,
+    notify_change_of_email,
     update_password
 )
 
@@ -34,12 +38,6 @@ CONFIRM_EMAIL = 'flask.mail.testtest@gmail.com'
 def init():
     return redirect(url_for('fetch_projects'))
 
-@app.route('/flows')
-def flows():
-    project_uuid = request.args.get('project')
-    flows = get_flows_by_project_uuid(project_uuid)
-    return render_template('flows.html', flows=flows)
-
 @app.route('/projects', methods=['GET'])
 def fetch_projects():
     if session.get('user_id') is None:
@@ -48,6 +46,15 @@ def fetch_projects():
     projects_creatable_permission = get_user_by_id(session['user_id']).projects_creatable
     projects = get_projects_with_permission(session['user_id'])
     return render_template('projects.html', projects=projects, create_permission=projects_creatable_permission, user=user)
+    
+@app.route('/flows', methods=['GET'])
+def fetch_flows():
+    user = get_user_by_id(session['user_id'])
+    # プロジェクトのパーミッション取得（フロー作成、削除権限の取得）
+    project_permission = make_projects_dict_from_result([get_permissions_project(session['user_id'], request.args.get('project'))])
+    project = db.session.query(Projects).filter_by(uuid=request.args.get('project')).first()
+    flows = get_flows_with_permission(project.id, session['user_id'])
+    return render_template('flows.html', flows=flows, flows_Edit_permission=project_permission, user=user)
 
 @app.route('/projects', methods=['POST'])
 def new_project():
@@ -60,6 +67,17 @@ def new_project():
     finished_create_projects = create_project(project_name, session['user_id'])
 
     return redirect(url_for('fetch_projects'))
+
+@app.route('/flows', methods=['POST'])
+def new_flow():
+    # 作成できるかチェック
+
+    # プロジェクト作成
+    flow_name = request.form['flow_name']
+    project = db.session.query(Projects).filter_by(uuid=request.form['project_uuid']).first()
+    finished_create_projects = create_flow(flow_name, get_user_by_id(session['user_id']), project)
+
+    return redirect(url_for('fetch_flows', project=request.form['project_uuid']))
 
 @app.route('/project/<project_uuid>', methods=['POST'])
 def delete_project(project_uuid):
@@ -96,17 +114,16 @@ def update_user_profile(user_id):
         email = request.form.get('email')
         user = get_user_by_id(user_id)
         old_email = user.email
-        url = make_temporal_url_for_update_email(email, user.email)
+        url = make_temporal_url_for_updating_email(email, user.email)
 
         with email_sender.connect() as conn:
-            send_email_of_address_modification(conn, user, email, url)
+            notify_change_of_email(conn, user, email, url)
 
         user = get_user_by_id(user_id)
         return render_template('profile.html', user=user)
 
     elif request.form.get('current_password') and request.form.get('new_password'):
         success = update_password(session['user_id'], request.form.get('current_password'), request.form.get('new_password'))
-        print(success)
         if success:
             # 本来はどこに飛ばそう？ログイン画面かな。
             return redirect(url_for('detail_users', user_id=session['user_id']))
@@ -116,23 +133,26 @@ def update_user_profile(user_id):
     print(request.form.get('current_password'), request.form.get('new_password'))
 
 @app.route('/profile/update/<mail_hash>')
-def register_email(mail_hash):
+def change_email(mail_hash):
     """
     メールの確認ができたので、アドレスを更新して画面をかえす
     """
-    path = pathlib.Path(app.root_path + '/profile/temp/' + mail_hash + '.activate')
+
+    # ハッシュ値は不可逆なので、元々のアドレスを取得できない
+    # なので、ハッシュ値をファイル名とした一時ファイルを作成し、そこに旧アドレス新アドレスを記載しておく
+    path = make_path_of_auth_by_mail_hash(mail_hash)
     if not path.exists():
         redirect(url_for('fetch_projects'))
 
     with open(path.as_posix(), 'r') as f:
         profile = f.readlines()
 
-    update_user_email_by_old_email(profile[0], profile[1])
+    replace_user_email_with_old_email(profile[0], profile[1])
     path.unlink()
 
     return redirect(url_for('fetch_projects'))
 
-def make_temporal_url_for_update_email(new_email, old_email):
+def make_temporal_url_for_updating_email(new_email, old_email):
     """
     emailアドレス更新用のURLを作成する
     """
@@ -142,7 +162,14 @@ def make_temporal_url_for_update_email(new_email, old_email):
     mail = [new_email, old_email]
 
     # 一時認証ファイルを作成する
-    with open(app.root_path + '/profile/temp/' + temp_path + '.activate', 'a', encoding="utf-8") as f:
+    with open(make_path_of_auth_by_mail_hash(temp_path), 'a', encoding="utf-8") as f:
         f.write("\n".join(mail))
 
     return url
+
+def make_path_of_auth_by_mail_hash(mail_hash):
+    """
+    一時認証ファイルのパスを作成する
+    """
+    path = pathlib.Path(app.root_path + '/profile/temp/' + mail_hash + '.activate')
+    return path

@@ -8,7 +8,7 @@ from . import app, db
 
 CONFIRM_EMAIL = 'flask.mail.testtest@gmail.com'
 
-def send_email_of_address_modification(connect, user, new_email, url):
+def notify_change_of_email(connect, user, new_email, url):
     """
     変更用のURLがついたメールと、変更のお知らせメールを送信する
     """

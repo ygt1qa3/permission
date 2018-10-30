@@ -5,22 +5,26 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from permission_trial import app
 from flask_mail import Mail, Message
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 import permission_trial.models as models
 import permission_trial.profile as profile
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 db = models.db
 
+# テスト用、実際にメールを飛ばさなくなる
 app.config.update(
     MAIL_SUPPRESS_SEND=False
 )
 email_sender = Mail(app)
 CONFIRM_EMAIL = 'flask.mail.testtest@gmail.com'
 
+print('メールを飛ばすテストがある（実際には飛ばしていないが）ので、少し実行に時間かかります')
+
 class PROFILETestCase(unittest.TestCase):
     email1 = 'user1@kskp.io'
     email2 = 'user2@kskp.io'
 
     def setUp(self):
+        db.drop_all()
         db.create_all()
         models.create_user('ユーザ１', self.email1, 'testpass')
         models.create_user('ユーザ2', self.email2, 'testpass2')
@@ -46,7 +50,7 @@ class PROFILETestCase(unittest.TestCase):
         with app.app_context():
             with email_sender.connect() as conn:
                 with email_sender.record_messages() as outbox:
-                    profile.send_email_of_address_modification(conn, user, new_email, test_url)
+                    profile.notify_change_of_email(conn, user, new_email, test_url)
                     result_box = outbox
 
         self.assertEqual(len(result_box), 2)

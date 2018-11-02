@@ -3,7 +3,7 @@ import time
 import hashlib
 import pathlib
 import json
-from flask import Flask, render_template, url_for, redirect, request, session, flash
+from flask import Flask, render_template, url_for, redirect, request, session, flash, jsonify
 from flask_mail import Mail, Message
 from . import app
 from .models import (
@@ -15,13 +15,15 @@ from .models import (
     get_user_by_id,
     replace_user_email_with_old_email,
     get_projects_with_permission,
-    get_projects_creatable_by_user_id,
-    create_project,
-    delete_project_and_permission,
+    create_project_with_permission,
+    delete_project,
     get_flows_with_permission,
     get_permissions_project,
     create_flow,
-    make_projects_dict_from_result
+    fetch_projects_by_user_id,
+    fetch_project_by_uuid,
+    fetch_flows_with_permission,
+    create_project
     )
 from .profile import (
     notify_change_of_email,
@@ -40,49 +42,84 @@ def init():
 
 @app.route('/projects', methods=['GET'])
 def fetch_projects():
+    """
+    閲覧可能なプロジェクト一覧を取得する
+    """
+    # ----trial専用----
     if session.get('user_id') is None:
         session['user_id'] = 1
     user = get_user_by_id(session['user_id'])
-    projects_creatable_permission = get_user_by_id(session['user_id']).projects_creatable
-    projects = get_projects_with_permission(session['user_id'])
-    return render_template('projects.html', projects=projects, create_permission=projects_creatable_permission, user=user)
-    
-@app.route('/flows', methods=['GET'])
-def fetch_flows():
-    user = get_user_by_id(session['user_id'])
-    # プロジェクトのパーミッション取得（フロー作成、削除権限の取得）
-    project_permission = make_projects_dict_from_result([get_permissions_project(session['user_id'], request.args.get('project'))])
-    project = db.session.query(Projects).filter_by(uuid=request.args.get('project')).first()
-    flows = get_flows_with_permission(project.id, session['user_id'])
-    return render_template('flows.html', flows=flows, flows_Edit_permission=project_permission, user=user)
+    # ----------------
+
+    projects = fetch_projects_by_user_id(session['user_id'])
+    return render_template('projects.html', data=projects, user=user)
 
 @app.route('/projects', methods=['POST'])
 def new_project():
-    # 作成できるかチェック
-    if not get_projects_creatable_by_user_id(session['user_id']):
-        return redirect(url_for('fetch_projects'))
-
-    # プロジェクト作成
-    project_name = request.form['project_name']
-    finished_create_projects = create_project(project_name, session['user_id'])
-
+    """
+    新規プロジェクトを作成する
+    """
+    created_result = create_project(session['user_id'], request.form['project_name'])
     return redirect(url_for('fetch_projects'))
+
+@app.route('/projects/<project_uuid>', methods=['POST'])
+def delete_project(project_uuid):
+    """
+    プロジェクトを削除する
+    """
+    deleted_result = delete_project(session['user_id'], project_uuid)
+    return redirect(url_for('fetch_projects', deleted_status=deleted_result))
 
 @app.route('/flows', methods=['POST'])
 def new_flow():
-    # 作成できるかチェック
+    """
+    新規フローを作成する
+    """
+    project = fetch_project_by_uuid(request.form['project_uuid'])
+    # プロトタイプなので何かするわけではないが、とりあえずのチェック
+    # 実際にプロジェクトが存在するかどうか
+    if project is None:
+        return redirect(url_for('fetch_flows', project=request.form['project_uuid']))
 
-    # プロジェクト作成
-    flow_name = request.form['flow_name']
-    project = db.session.query(Projects).filter_by(uuid=request.form['project_uuid']).first()
-    finished_create_projects = create_flow(flow_name, get_user_by_id(session['user_id']), project)
+    user = get_user_by_id(session['user_id'])
+    created_result = create_flow(request.form['flow_name'], user, project.id)
 
     return redirect(url_for('fetch_flows', project=request.form['project_uuid']))
 
-@app.route('/project/<project_uuid>', methods=['POST'])
-def delete_project(project_uuid):
-    deleted_status = delete_project_and_permission(session['user_id'], project_uuid)
-    return redirect(url_for('fetch_projects', deleted_status=deleted_status))
+@app.route('/flows', methods=['GET'])
+def fetch_flows():
+    """
+    パラメータで指定されたプロジェクトが持ち
+    自分に閲覧権限があるフローの一覧を取得する
+    """
+    # ----trial専用----
+    user = get_user_by_id(session['user_id'])
+    # ----------------
+    flows_with_permission = fetch_flows_with_permission(session['user_id'], request.args.get('project'))
+    return render_template('flows.html', flows=flows_with_permission, user=user)
+
+@app.route('/flows/<flow_uuid>', methods=['GET'])
+def fetch_flow(flow_uuid):
+    """
+    指定されたフローを取得する
+    """
+    return render_template('flow_edit.html', data=fetch_flow(session['user_id'], flow_uuid))
+
+@app.route('/flows/<flow_uuid>', methods=['POST'])
+def delete_project(flow_uuid):
+    """
+    指定されたフローを削除する
+    """
+    deleted_result = delete_flow(session['user_id'], flow_uuid)
+    return redirect(url_for('fetch_flows', deleted_status=deleted_result))
+
+@app.route('/flows/<flow_uuid>', methods=['PUT'])
+def update_project(flow_uuid):
+    """
+    指定されたフローを更新する
+    """
+    deleted_result = update_flow(session['user_id'], flow_uuid, request.json)
+    return redirect(url_for('fetch_flows', deleted_status=deleted_result))
 
 @app.route('/user/<user_id>', methods=['POST'])
 def change_users(user_id):

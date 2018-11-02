@@ -22,7 +22,7 @@
       </thead>
       <tbody>
         <form method='POST' name='project_list'>
-          {% for project in projects %}
+          {% for project in data['projects'] %}
             <tr>
               <td>
                 {% if project['readable_flows'] %}
@@ -32,7 +32,7 @@
                 {% endif %}
               </td>
               <td>
-                <button type="submit" onclick="submitAction('/project/{{project['uuid']}}', 'project_list')" {% if not project['deletable_project'] %}disabled{% endif %}>削除</button>
+                <button type="submit" onclick="submitAction('/projects/{{project['uuid']}}', 'project_list')" {% if not project['deletable_project'] %}disabled{% endif %}>削除</button>
               </td>
             </tr>
           {% endfor %}
@@ -41,6 +41,6 @@
       </table>
     <form action='/projects' method='POST'>
       <input type="text" name="project_name" size="20" maxlength="10">
-      <button type="submit" {% if not create_permission %}disabled{% endif %}>登録</button>
+      <button type="submit" {% if not data['creatable'] %}disabled{% endif %}>登録</button>
     </form>
 {% endblock %}

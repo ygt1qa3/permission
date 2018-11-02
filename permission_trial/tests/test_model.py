@@ -31,7 +31,7 @@ class ModelTestCase(unittest.TestCase):
         self.assertEqual(user.name, 'ユーザ１')
         self.assertEqual(user.email, email)
         self.assertEqual(user.group_id, None)
-        self.assertEqual(user.projects_creatable, True)
+        self.assertEqual(user.creatable_projects, True)
 
     def test_get_readable_projects_by_user(self):
         """
@@ -53,56 +53,26 @@ class ModelTestCase(unittest.TestCase):
         user2 = db.session.query(models.Users).filter_by(email=email2).first()
 
         # ユーザ１がユーザ１用プロジェクトを作成
-        models.create_project(project_name_1, user1.id)
+        models.create_project_with_permission(project_name_1, user1.id)
         # ユーザ２がユーザ２用プロジェクトを作成
-        models.create_project(project_name_2, user2.id)
+        models.create_project_with_permission(project_name_2, user2.id)
         # 共用プロジェクトを作成
-        models.create_project(project_name_3, user1.id)
-        all_projects = models.get_all_projects()
+        models.create_project_with_permission(project_name_3, user1.id)
+
+        all_projects = db.session.query(models.Projects).all()
         db.session.add(models.UserPermissions_Project(user2.id, all_projects[2].id))
         db.session.commit()
 
         # 自分が見れるプロジェクトが取得できているかテスト
         projects_for_user1 = models.fetch_readable_projects_by_user_id(user1.id)
-        self.assertEqual(projects_for_user1.count(), 2)
-        self.assertEqual(projects_for_user1[0].Projects.name, project_name_1)
-        self.assertEqual(projects_for_user1[1].Projects.name, project_name_3)
+        self.assertEqual(len(projects_for_user1), 2)
+        self.assertEqual(projects_for_user1[0].name, project_name_1)
+        self.assertEqual(projects_for_user1[1].name, project_name_3)
 
         projects_for_user2 = models.fetch_readable_projects_by_user_id(user2.id)
-        self.assertEqual(projects_for_user2.count(), 2)
-        self.assertEqual(projects_for_user2[0].Projects.name, project_name_2)
-        self.assertEqual(projects_for_user2[1].Projects.name, project_name_3)
-
-    def test_projects_creatable_by_user(self):
-        """
-        ユーザがプロジェクト作成権限を持っているかどうかの判定のテスト（作成権限を持っている）
-        """
-        # ユーザ作成
-        email1 = 'user1@kskp.io'
-        models.create_user('ユーザ１', email1, '')
-        user1 = db.session.query(models.Users).filter_by(email=email1).first()
-
-        # テスト
-        can_create_projects = models.get_projects_creatable_by_user_id(user1.id)
-        self.assertEqual(can_create_projects, True)
-
-    def test_not_projects_creatable(self):
-        """
-        ユーザがプロジェクト作成権限を持っているかどうかの判定のテスト（作成権限を持たない）
-        """
-        # ユーザ作成
-        email1 = 'user1@kskp.io'
-        models.create_user('ユーザ１', email1, '')
-        user1 = db.session.query(models.Users).filter_by(email=email1).first()
-
-        # ユーザのプロジェクト作成権限を変更する
-        user1.projects_creatable = False
-        db.session.add(user1)
-        db.session.commit()
-
-        # テスト
-        can_create_projects = models.get_projects_creatable_by_user_id(user1.id)
-        self.assertEqual(can_create_projects, False)
+        self.assertEqual(len(projects_for_user2), 2)
+        self.assertEqual(projects_for_user2[0].name, project_name_2)
+        self.assertEqual(projects_for_user2[1].name, project_name_3)
 
     def test_create_group(self):
         """
@@ -114,7 +84,7 @@ class ModelTestCase(unittest.TestCase):
         group = db.session.query(models.Groups).all()
 
         self.assertEqual(group[0].name, group_name)
-        self.assertEqual(group[0].projects_creatable, True)
+        self.assertEqual(group[0].creatable_projects, True)
 
     def test_delete_group(self):
         """
@@ -192,11 +162,11 @@ class ModelTestCase(unittest.TestCase):
         user = db.session.query(models.Users).filter_by(email=email).first()
 
         # プロジェクトの作成
-        models.create_project(project_name_1, user.id)
-        models.create_project(project_name_2, user.id)
-        models.create_project(project_name_3, user.id)
+        models.create_project_with_permission(project_name_1, user.id)
+        models.create_project_with_permission(project_name_2, user.id)
+        models.create_project_with_permission(project_name_3, user.id)
 
-        projects = models.get_all_projects()
+        projects = db.session.query(models.Projects).all()
 
         # グループの作成
         group_name1 = "テストグループ１"
@@ -217,14 +187,14 @@ class ModelTestCase(unittest.TestCase):
 
         # それぞれのグループが見れるプロジェクトが取得できているかテスト
         projects_for_group1 = models.fetch_readable_projects_by_group_id(group1.id)
-        self.assertEqual(projects_for_group1.count(), 2)
-        self.assertEqual(projects_for_group1[0].Projects.name, project_name_1)
-        self.assertEqual(projects_for_group1[1].Projects.name, project_name_3)
+        self.assertEqual(len(projects_for_group1), 2)
+        self.assertEqual(projects_for_group1[0].name, project_name_1)
+        self.assertEqual(projects_for_group1[1].name, project_name_3)
 
         projects_for_group2 = models.fetch_readable_projects_by_group_id(group2.id)
-        self.assertEqual(projects_for_group2.count(), 2)
-        self.assertEqual(projects_for_group2[0].Projects.name, project_name_2)
-        self.assertEqual(projects_for_group2[1].Projects.name, project_name_3)
+        self.assertEqual(len(projects_for_group2), 2)
+        self.assertEqual(projects_for_group2[0].name, project_name_2)
+        self.assertEqual(projects_for_group2[1].name, project_name_3)
 
     def test_create_project_belong_to_group(self):
         """
@@ -251,25 +221,25 @@ class ModelTestCase(unittest.TestCase):
         models.assign_user_to_group(user.id, group.id)
 
         # プロジェクト作成
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
 
         # プロジェクトが作成されているかテスト
         projects = models.fetch_readable_projects_by_user_id(user.id)
-        self.assertEqual(projects.count(), 1)
-        self.assertEqual(projects[0].Projects.name, project_name)
-        self.assertEqual(projects[0].Projects.creator_id, user.id)
+        self.assertEqual(len(projects), 1)
+        self.assertEqual(projects[0].name, project_name)
+        self.assertEqual(projects[0].creator_id, user.id)
 
         # ユーザ×プロジェクトが作成されているかテスト
-        userpermission_projects = db.session.query(models.UserPermissions_Project).filter_by(project_id=projects[0].Projects.id, user_id=user.id)
+        userpermission_projects = db.session.query(models.UserPermissions_Project).filter_by(project_id=projects[0].id, user_id=user.id)
         self.assertEqual(userpermission_projects.count(), 1)
         self.assertEqual(userpermission_projects[0].user_id, user.id)
-        self.assertEqual(userpermission_projects[0].project_id, projects[0].Projects.id)
+        self.assertEqual(userpermission_projects[0].project_id, projects[0].id)
 
         # グループ×プロジェクトが作成されていることの確認テスト
-        grouppermission_projects = db.session.query(models.GroupPermissions_Project).filter_by(project_id=projects[0].Projects.id, group_id=group.id)
+        grouppermission_projects = db.session.query(models.GroupPermissions_Project).filter_by(project_id=projects[0].id, group_id=group.id)
         self.assertEqual(grouppermission_projects.count(), 1)
         self.assertEqual(grouppermission_projects[0].group_id, group.id)
-        self.assertEqual(grouppermission_projects[0].project_id, projects[0].Projects.id)
+        self.assertEqual(grouppermission_projects[0].project_id, projects[0].id)
 
     def test_delete_project_belong_to_group(self):
         """
@@ -296,24 +266,28 @@ class ModelTestCase(unittest.TestCase):
         models.assign_user_to_group(user.id, group.id)
 
         # プロジェクト作成
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
+        before_projects = models.fetch_readable_projects_by_user_id(user.id)
+
+        userpermission_projects = models.get_userpermissions_project(user.id, before_projects[0].id)
+        self.assertIsNotNone(userpermission_projects)
+        grouppermission_projects = models.get_grouppermissions_project(group.id, before_projects[0].id)
+        self.assertIsNotNone(grouppermission_projects)
 
         # プロジェクトを削除
-        before_projects = models.fetch_readable_projects_by_user_id(user.id)
-        before_projects_id = before_projects[0].Projects.id
-        models.delete_project_by_uuid(before_projects[0].Projects.uuid)
+        models.delete_project_with_permission_by_uuid(before_projects[0].uuid)
 
         # プロジェクトが削除されているか
         after_projects = models.fetch_readable_projects_by_user_id(user.id)
-        self.assertEqual(after_projects.count(), 0)
+        self.assertEqual(len(after_projects), 0)
 
         # ユーザ×プロジェクトにおいて、削除したプロジェクトのデータが削除されているか？
-        userpermission_projects = db.session.query(models.UserPermissions_Project).filter_by(project_id=before_projects_id, user_id=user.id)
-        self.assertEqual(userpermission_projects.count(), 0)
+        userpermission_projects = models.get_userpermissions_project(user.id, before_projects[0].id)
+        self.assertIsNone(userpermission_projects)
 
         # グループ×プロジェクトにおいて、削除したプロジェクトのデータが削除されているか？
-        grouppermission_projects = db.session.query(models.GroupPermissions_Project).filter_by(project_id=before_projects_id, group_id=group.id)
-        self.assertEqual(grouppermission_projects.count(), 0)
+        grouppermission_projects = models.get_grouppermissions_project(group.id, before_projects[0].id)
+        self.assertIsNone(grouppermission_projects)
 
     def test_create_project_not_belong_to_group(self):
         """
@@ -331,22 +305,22 @@ class ModelTestCase(unittest.TestCase):
         user = db.session.query(models.Users).filter_by(email=email).first()
 
         # プロジェクト作成
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
 
         # プロジェクトが作成されているかテスト
         projects = models.fetch_readable_projects_by_user_id(user.id)
-        self.assertEqual(projects.count(), 1)
-        self.assertEqual(projects[0].Projects.name, project_name)
-        self.assertEqual(projects[0].Projects.creator_id, user.id)
+        self.assertEqual(len(projects), 1)
+        self.assertEqual(projects[0].name, project_name)
+        self.assertEqual(projects[0].creator_id, user.id)
 
         # ユーザ×プロジェクトが作成されているかテスト
-        userpermission_projects = db.session.query(models.UserPermissions_Project).filter_by(project_id=projects[0].Projects.id, user_id=user.id)
-        self.assertEqual(userpermission_projects.count(), 1)
-        self.assertEqual(userpermission_projects[0].user_id, user.id)
-        self.assertEqual(userpermission_projects[0].project_id, 1)
+        userpermission_projects = models.get_userpermissions_project(user.id, projects[0].id)
+        self.assertIsNotNone(userpermission_projects)
+        self.assertEqual(userpermission_projects.user_id, user.id)
+        self.assertEqual(userpermission_projects.project_id, 1)
 
         # グループ×プロジェクトが作成されていないことの確認テスト
-        grouppermission_projects = db.session.query(models.GroupPermissions_Project).filter_by(project_id=projects[0].Projects.id)
+        grouppermission_projects = db.session.query(models.GroupPermissions_Project).filter_by(project_id=projects[0].id)
         self.assertEqual(grouppermission_projects.count(), 0)
 
     def test_delete_project_not_belong_to_group(self):
@@ -365,16 +339,16 @@ class ModelTestCase(unittest.TestCase):
         user = db.session.query(models.Users).filter_by(email=email).first()
 
         # プロジェクト作成
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
 
         # プロジェクトを削除
         before_projects = models.fetch_readable_projects_by_user_id(user.id)
-        before_projects_id = before_projects[0].Projects.id
-        models.delete_project_by_uuid(before_projects[0].Projects.uuid)
+        before_projects_id = before_projects[0].id
+        models.delete_project_with_permission_by_uuid(before_projects[0].uuid)
 
         # プロジェクトが削除されているか
         after_projects = models.fetch_readable_projects_by_user_id(user.id)
-        self.assertEqual(after_projects.count(), 0)
+        self.assertEqual(len(after_projects), 0)
 
         # ユーザ×プロジェクトにおいて、削除したプロジェクトのデータが削除されているか？
         userpermission_projects = db.session.query(models.UserPermissions_Project).filter_by(project_id=before_projects_id, user_id=user.id)
@@ -406,11 +380,11 @@ class ModelTestCase(unittest.TestCase):
         # 作成するプロジェクト情報
         project_name = '開発用'
         # プロジェクトの作成
-        models.create_project(project_name, create_project_user.id)
+        models.create_project_with_permission(project_name, create_project_user.id)
 
         # グループ×プロジェクトの権限変更（削除できるように）
         projects = models.fetch_readable_projects_by_user_id(create_project_user.id)
-        grouppermission_project = models.get_grouppermissions_project(group.id, projects[0].Projects.id)
+        grouppermission_project = models.get_grouppermissions_project(group.id, projects[0].id)
         grouppermission_project.deletable_project = True
         db.session.add(grouppermission_project)
         db.session.commit()
@@ -424,17 +398,17 @@ class ModelTestCase(unittest.TestCase):
         models.assign_user_to_group(user.id, group.id)
 
         # ユーザ×プロジェクトが存在しないことの確認
-        userpermission_project = models.get_userpermissions_project(user.id, projects[0].Projects.id)
+        userpermission_project = models.get_userpermissions_project(user.id, projects[0].id)
         self.assertIsNone(userpermission_project)
 
         # プロジェクトの削除
-        delete_project_and_permission = models.delete_project_and_permission(user.id, projects[0].Projects.uuid)
+        delete_project = models.delete_project(user.id, projects[0].uuid)
 
         # テスト
-        self.assertEqual(delete_project_and_permission, True)
+        self.assertEqual(delete_project, True)
         # プロジェクトが削除されていることの確認
         projects = models.fetch_readable_projects_by_user_id(create_project_user.id)
-        self.assertEqual(projects.count(), 0)
+        self.assertEqual(len(projects), 0)
 
     def test_delete_project_2(self):
         """
@@ -463,17 +437,17 @@ class ModelTestCase(unittest.TestCase):
         project_name = '開発用'
         # プロジェクトの作成
         # デフォルトがユーザ権限はプロジェクトを削除できる、グループ権限は削除できない
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
         # プロジェクトの削除
-        delete_project_and_permission = models.delete_project_and_permission(user.id, projects[0].Projects.uuid)
+        delete_project = models.delete_project(user.id, projects[0].uuid)
 
         # テスト
-        self.assertEqual(delete_project_and_permission, True)
+        self.assertEqual(delete_project, True)
         # プロジェクトが削除されていることの確認
         projects = models.fetch_readable_projects_by_user_id(user.id)
-        self.assertEqual(projects.count(), 0)
+        self.assertEqual(len(projects), 0)
 
     def test_get_projects_1(self):
         """
@@ -516,9 +490,9 @@ class ModelTestCase(unittest.TestCase):
         project_name2 = '開発用2'
         project_name3 = '開発用3'
 
-        models.create_project(project_name1, create_project_user.id)
-        models.create_project(project_name2, create_project_user.id)
-        models.create_project(project_name3, create_project_user.id)
+        models.create_project_with_permission(project_name1, create_project_user.id)
+        models.create_project_with_permission(project_name2, create_project_user.id)
+        models.create_project_with_permission(project_name3, create_project_user.id)
 
         projects = models.fetch_readable_projects_by_user_id(create_project_user.id)
 
@@ -534,13 +508,13 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクト２
         # ユーザ１用のユーザ×プロジェクトを作成
-        userpermission_project2 = models.UserPermissions_Project(user.id, projects[1].Projects.id)
+        userpermission_project2 = models.UserPermissions_Project(user.id, projects[1].id)
         db.session.add(userpermission_project2)
         db.session.commit()
 
         # プロジェクト３
         # ユーザ１用のユーザ×プロジェクトを作成、プロジェクト削除権限をFalseにする（デフォルトがTrueなので）
-        models.grant_user_to_project(user.id, projects[2].Projects.id, deletable_project=False)
+        models.grant_user_to_project(user.id, projects[2].id, deletable_project=False)
 
         # 答え合わせ用のプロジェクトの取得
         result_projects = models.get_projects_with_permission(user.id)
@@ -560,16 +534,16 @@ class ModelTestCase(unittest.TestCase):
 
         # 画面の制御を無視して、直接プロジェクトを削除してみる
         # 何かの間違いで、ユーザ１が削除できないはずのプロジェクト１を削除してみる（削除されないはず）
-        delete_project_and_permission = models.delete_project_and_permission(user.id, project1['uuid'])
-        self.assertEqual(delete_project_and_permission, False)
+        delete_project = models.delete_project(user.id, project1['uuid'])
+        self.assertEqual(delete_project, False)
 
         # プロジェクト２を削除してみる（削除できる）
-        delete_project_and_permission = models.delete_project_and_permission(user.id, project2['uuid'])
-        self.assertEqual(delete_project_and_permission, True)
+        delete_project = models.delete_project(user.id, project2['uuid'])
+        self.assertEqual(delete_project, True)
 
         # 何かの間違いで、ユーザ１が削除できないはずのプロジェクト３を削除してみる（削除されないはず）
-        delete_project_and_permission = models.delete_project_and_permission(user.id, project3['uuid'])
-        self.assertEqual(delete_project_and_permission, False)
+        delete_project = models.delete_project(user.id, project3['uuid'])
+        self.assertEqual(delete_project, False)
 
         # 削除後のプロジェクト数を確認する（プロジェクト２が削除されているので、2つになるはず）
         after_readable_projects = models.get_projects_with_permission(user.id)
@@ -616,9 +590,9 @@ class ModelTestCase(unittest.TestCase):
         project_name2 = '開発用2'
         project_name3 = '開発用3'
 
-        models.create_project(project_name1, create_project_user.id)
-        models.create_project(project_name2, create_project_user.id)
-        models.create_project(project_name3, create_project_user.id)
+        models.create_project_with_permission(project_name1, create_project_user.id)
+        models.create_project_with_permission(project_name2, create_project_user.id)
+        models.create_project_with_permission(project_name3, create_project_user.id)
 
         projects = models.fetch_readable_projects_by_user_id(create_project_user.id)
 
@@ -632,23 +606,23 @@ class ModelTestCase(unittest.TestCase):
         # パーミッションの設定
         # プロジェクト１
         # グループ権限を変更する
-        grouppermission_project1 = models.get_grouppermissions_project(group.id, projects[0].Projects.id)
+        grouppermission_project1 = models.get_grouppermissions_project(group.id, projects[0].id)
         grouppermission_project1.deletable_project = True
         db.session.add(grouppermission_project1)
 
         # プロジェクト２
         # ユーザ１用のユーザ×プロジェクトを作成
-        models.grant_user_to_project(user.id, projects[1].Projects.id)
+        models.grant_user_to_project(user.id, projects[1].id)
         # グループのプロジェクト削除のパーミッションをTrueに設定する（デフォルトがFalseなので）
-        grouppermission_project2 = models.get_grouppermissions_project(group.id, projects[1].Projects.id)
+        grouppermission_project2 = models.get_grouppermissions_project(group.id, projects[1].id)
         grouppermission_project2.deletable_project = True
         db.session.add(grouppermission_project2)
 
         # プロジェクト３
         # ユーザ１用のユーザ×プロジェクトを作成、プロジェクト削除のパーミッションをFalseにする（デフォルトがTrueなので）
-        models.grant_user_to_project(user.id, projects[2].Projects.id, deletable_project=False)
+        models.grant_user_to_project(user.id, projects[2].id, deletable_project=False)
         # グループのプロジェクト削除のパーミッションをTrueに設定する（デフォルトがFalseなので）
-        grouppermission_project3 = models.get_grouppermissions_project(group.id, projects[2].Projects.id)
+        grouppermission_project3 = models.get_grouppermissions_project(group.id, projects[2].id)
         grouppermission_project3.deletable_project = True
         db.session.add(grouppermission_project3)
         # コミット
@@ -672,16 +646,16 @@ class ModelTestCase(unittest.TestCase):
 
         # 画面の制御を無視して、直接プロジェクトを削除してみる
         # プロジェクト１を削除してみる（削除できる）
-        delete_project_and_permission = models.delete_project_and_permission(user.id, project1['uuid'])
-        self.assertEqual(delete_project_and_permission, True)
+        delete_project = models.delete_project(user.id, project1['uuid'])
+        self.assertEqual(delete_project, True)
 
         # プロジェクト２を削除してみる（削除できる）
-        delete_project_and_permission = models.delete_project_and_permission(user.id, project2['uuid'])
-        self.assertEqual(delete_project_and_permission, True)
+        delete_project = models.delete_project(user.id, project2['uuid'])
+        self.assertEqual(delete_project, True)
 
         # 何かの間違いで、ユーザ１が削除できないはずのプロジェクト３を削除してみる（削除されないはず）
-        delete_project_and_permission = models.delete_project_and_permission(user.id, project3['uuid'])
-        self.assertEqual(delete_project_and_permission, False)
+        delete_project = models.delete_project(user.id, project3['uuid'])
+        self.assertEqual(delete_project, False)
 
         # 削除後のプロジェクト数を確認する（プロジェクト１と２が削除されているので、１つになるはず）
         after_readable_projects = models.get_projects_with_permission(user.id)
@@ -707,7 +681,7 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクトの作成
         project_name = '開発用'
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
         # ユーザをグループに所属させる
@@ -716,13 +690,13 @@ class ModelTestCase(unittest.TestCase):
         # フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user, projects[0].Projects, flow_uuid)
+        models.create_flow(flow_name, user, projects[0].id, flow_uuid)
 
         # 作成されたかのテスト
         flow = models.fetch_flow_by_uuid(flow_uuid)
         self.assertEqual(flow.uuid, flow_uuid)
         self.assertEqual(json.loads(flow.json)['label'], flow_name)
-        self.assertEqual(flow.project_id, projects[0].Projects.id)
+        self.assertEqual(flow.project_id, projects[0].id)
         self.assertEqual(flow.creator_id, user.id)
 
         # ユーザ×フローが作成されているかのテスト
@@ -751,19 +725,19 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクトの作成
         project_name = '開発用'
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
         # フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user, projects[0].Projects, flow_uuid)
+        models.create_flow(flow_name, user, projects[0].id, flow_uuid)
 
         # 作成されたかのテスト
         flow = models.fetch_flow_by_uuid(flow_uuid)
         self.assertEqual(flow.uuid, flow_uuid)
         self.assertEqual(json.loads(flow.json)['label'], flow_name)
-        self.assertEqual(flow.project_id, projects[0].Projects.id)
+        self.assertEqual(flow.project_id, projects[0].id)
         self.assertEqual(flow.creator_id, user.id)
 
         # ユーザ×フローが作成されているかのテスト
@@ -788,7 +762,7 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクトの作成
         project_name = 'プロジェクト１'
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
         # 取得用フローの作成
@@ -801,19 +775,19 @@ class ModelTestCase(unittest.TestCase):
         flow_name3 = 'テストフロー３'
         flow_uuid3 = 'test3'
 
-        models.create_flow(flow_name1, user, projects[0].Projects, flow_uuid1)
-        models.create_flow(flow_name2, user, projects[0].Projects, flow_uuid2)
-        models.create_flow(flow_name3, user, projects[0].Projects, flow_uuid3)
+        models.create_flow(flow_name1, user, projects[0].id, flow_uuid1)
+        models.create_flow(flow_name2, user, projects[0].id, flow_uuid2)
+        models.create_flow(flow_name3, user, projects[0].id, flow_uuid3)
 
-        flows = models.get_flows_with_permission(projects[0].Projects.id, user.id)
+        flows = models.get_flows_with_permission(projects[0].id, user.id)
 
         self.assertEqual(len(flows), 3)
         self.assertEqual(flows[0]['uuid'], flow_uuid1)
-        self.assertEqual(flows[0]['json']['label'], flow_name1)
+        self.assertEqual(json.loads(flows[0]['json'])['label'], flow_name1)
         self.assertEqual(flows[1]['uuid'], flow_uuid2)
-        self.assertEqual(flows[1]['json']['label'], flow_name2)
+        self.assertEqual(json.loads(flows[1]['json'])['label'], flow_name2)
         self.assertEqual(flows[2]['uuid'], flow_uuid3)
-        self.assertEqual(flows[2]['json']['label'], flow_name3)
+        self.assertEqual(json.loads(flows[2]['json'])['label'], flow_name3)
 
     def test_fetch_flows_2(self):
         """
@@ -829,11 +803,11 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクト１の作成
         project_name = 'プロジェクト１'
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
 
         # プロジェクト２の作成
         project_name2 = 'プロジェクト２'
-        models.create_project(project_name2, user.id)
+        models.create_project_with_permission(project_name2, user.id)
 
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
@@ -850,21 +824,21 @@ class ModelTestCase(unittest.TestCase):
         flow_name3 = 'テストフロー３'
         flow_uuid3 = 'test3'
 
-        models.create_flow(flow_name1, user, project1.Projects, flow_uuid1)
-        models.create_flow(flow_name2, user, project2.Projects, flow_uuid2)
-        models.create_flow(flow_name3, user, project1.Projects, flow_uuid3)
+        models.create_flow(flow_name1, user, project1.id, flow_uuid1)
+        models.create_flow(flow_name2, user, project2.id, flow_uuid2)
+        models.create_flow(flow_name3, user, project1.id, flow_uuid3)
 
-        flows_of_project1 = models.get_flows_with_permission(project1.Projects.id, user.id)
-        flows_of_project2 = models.get_flows_with_permission(project2.Projects.id, user.id)
+        flows_of_project1 = models.get_flows_with_permission(project1.id, user.id)
+        flows_of_project2 = models.get_flows_with_permission(project2.id, user.id)
 
         self.assertEqual(len(flows_of_project1), 2)
         self.assertEqual(len(flows_of_project2), 1)
         self.assertEqual(flows_of_project1[0]['uuid'], flow_uuid1)
-        self.assertEqual(flows_of_project1[0]['json']['label'], flow_name1)
+        self.assertEqual(json.loads(flows_of_project1[0]['json'])['label'], flow_name1)
         self.assertEqual(flows_of_project1[1]['uuid'], flow_uuid3)
-        self.assertEqual(flows_of_project1[1]['json']['label'], flow_name3)
+        self.assertEqual(json.loads(flows_of_project1[1]['json'])['label'], flow_name3)
         self.assertEqual(flows_of_project2[0]['uuid'], flow_uuid2)
-        self.assertEqual(flows_of_project2[0]['json']['label'], flow_name2)
+        self.assertEqual(json.loads(flows_of_project2[0]['json'])['label'], flow_name2)
 
     def test_update_flow(self):
         """
@@ -877,19 +851,19 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクトの作成
         project_name = 'プロジェクト'
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
         # 取得用フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user, projects[0].Projects, flow_uuid)
+        models.create_flow(flow_name, user, projects[0].id, flow_uuid)
 
         update_flow_name = '更新用テストフロー'
 
         # 更新用json
         data = {
-            'proejctId': projects[0].Projects.id,
+            'proejctId': projects[0].id,
             'label': update_flow_name,
             'ports': [
                 [{"name": "test_i", "type": "frame"}],
@@ -903,7 +877,7 @@ class ModelTestCase(unittest.TestCase):
             ],
             'description': "更新"
         }
-        models.update_flow(flow_uuid, data)
+        models.update_flow_by_uuid(flow_uuid, data)
 
         flow = models.fetch_flow_by_uuid(flow_uuid)
         flow_json = json.loads(flow.json)
@@ -931,13 +905,13 @@ class ModelTestCase(unittest.TestCase):
 
         # プロジェクトの作成
         project_name = 'プロジェクト'
-        models.create_project(project_name, user.id)
+        models.create_project_with_permission(project_name, user.id)
         projects = models.fetch_readable_projects_by_user_id(user.id)
 
         # 削除用フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user,  projects[0].Projects, flow_uuid)
+        models.create_flow(flow_name, user,  projects[0].id, flow_uuid)
 
         # 削除前の確認
         flow = models.fetch_flow_by_uuid(flow_uuid)
@@ -950,7 +924,7 @@ class ModelTestCase(unittest.TestCase):
         self.assertEqual(grouppermission_flow.count(), 1)
 
         # 削除
-        models.delete_flow_by_uuid(flow_uuid)
+        models.delete_flow_with_permission_by_uuid(flow_uuid)
 
         # 削除後の確認
         flow = models.fetch_flow_by_uuid(flow_uuid)
@@ -959,3 +933,38 @@ class ModelTestCase(unittest.TestCase):
         self.assertEqual(userpermission_flow.count(), 0)
         grouppermission_flow = db.session.query(models.GroupPermissions_Flow).filter_by(group_id=group.id, flow_uuid=flow_uuid)
         self.assertEqual(grouppermission_flow.count(), 0)
+
+    def test_fetch_flow(self):
+        """
+        指定したフローの内容を取得する
+        """
+        # ユーザの作成
+        email = 'dev@kskp.io'
+        models.create_user('ユーザ１', email, '')
+        user = db.session.query(models.Users).filter_by(email=email).first()
+
+        # グループの作成
+        group_name = "テストグループ"
+        models.create_group(group_name)
+        group = db.session.query(models.Groups).all()[0]
+        # ユーザをグループに所属させる
+        models.assign_user_to_group(user.id, group.id)
+
+        # プロジェクトの作成
+        project_name = 'プロジェクト'
+        models.create_project_with_permission(project_name, user.id)
+        projects = models.fetch_readable_projects_by_user_id(user.id)
+
+        # フローの作成
+        flow_name = 'テストフロー'
+        flow_uuid = 'test'
+        models.create_flow(flow_name, user,  projects[0].id, flow_uuid)
+
+        # 取得
+        flow = models.make_dict_from_model(models.fetch_flow_by_uuid(flow_uuid))
+        flow_json = json.loads(flow['json'])
+
+        self.assertEqual(flow['uuid'], flow_uuid)
+        self.assertEqual(flow_json['label'], flow_name)
+        self.assertEqual(flow['project_id'], projects[0].id)
+        self.assertEqual(flow['creator_id'], user.id)

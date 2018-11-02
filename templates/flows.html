@@ -25,13 +25,13 @@
       </thead>
       <tbody>
         <form method='POST' name='flow_list'>
-          {% for flow in flows %}
+          {% for flow in flows['flow'] %}
             <tr>
               <td>
                 <a href="/frames?uuid={{flow.uuid}}">{{flow['json']['label']}}</a>
               </td>
               <td>
-                <button type="submit" onclick="submitAction('/flow/{{flow['uuid']}}', 'flow_list')" {% if not flows_Edit_permission['deletable_flows'] %}disabled{% endif %}>削除</button>
+                <button type="submit" onclick="submitAction('/flow/{{flow['uuid']}}', 'flow_list')" {% if not flows['edit_permission']['deletable_flows'] %}disabled{% endif %}>削除</button>
               </td>
             </tr>
           {% endfor %}
@@ -45,6 +45,6 @@
       uuid = getParam('project');
       document.getElementById('puuid').value = uuid;
       </script>
-      <button type="submit" {% if not flows_Edit_permission['creatable_flows'] %}disabled{% endif %}>登録</button>
+      <button type="submit" {% if not flows['edit_permission']['creatable_flows'] %}disabled{% endif %}>登録</button>
     </form>
 {% endblock %}

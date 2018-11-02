@@ -690,7 +690,7 @@ class ModelTestCase(unittest.TestCase):
         # フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user, projects[0].id, flow_uuid)
+        models.create_flow_with_permission(flow_name, user, projects[0].id, flow_uuid)
 
         # 作成されたかのテスト
         flow = models.fetch_flow_by_uuid(flow_uuid)
@@ -731,7 +731,7 @@ class ModelTestCase(unittest.TestCase):
         # フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user, projects[0].id, flow_uuid)
+        models.create_flow_with_permission(flow_name, user, projects[0].id, flow_uuid)
 
         # 作成されたかのテスト
         flow = models.fetch_flow_by_uuid(flow_uuid)
@@ -775,9 +775,9 @@ class ModelTestCase(unittest.TestCase):
         flow_name3 = 'テストフロー３'
         flow_uuid3 = 'test3'
 
-        models.create_flow(flow_name1, user, projects[0].id, flow_uuid1)
-        models.create_flow(flow_name2, user, projects[0].id, flow_uuid2)
-        models.create_flow(flow_name3, user, projects[0].id, flow_uuid3)
+        models.create_flow_with_permission(flow_name1, user, projects[0].id, flow_uuid1)
+        models.create_flow_with_permission(flow_name2, user, projects[0].id, flow_uuid2)
+        models.create_flow_with_permission(flow_name3, user, projects[0].id, flow_uuid3)
 
         flows = models.get_flows_with_permission(projects[0].id, user.id)
 
@@ -824,13 +824,13 @@ class ModelTestCase(unittest.TestCase):
         flow_name3 = 'テストフロー３'
         flow_uuid3 = 'test3'
 
-        models.create_flow(flow_name1, user, project1.id, flow_uuid1)
-        models.create_flow(flow_name2, user, project2.id, flow_uuid2)
-        models.create_flow(flow_name3, user, project1.id, flow_uuid3)
+        models.create_flow_with_permission(flow_name1, user, project1.id, flow_uuid1)
+        models.create_flow_with_permission(flow_name2, user, project2.id, flow_uuid2)
+        models.create_flow_with_permission(flow_name3, user, project1.id, flow_uuid3)
 
         flows_of_project1 = models.get_flows_with_permission(project1.id, user.id)
         flows_of_project2 = models.get_flows_with_permission(project2.id, user.id)
-
+        print(flows_of_project1)
         self.assertEqual(len(flows_of_project1), 2)
         self.assertEqual(len(flows_of_project2), 1)
         self.assertEqual(flows_of_project1[0]['uuid'], flow_uuid1)
@@ -857,7 +857,7 @@ class ModelTestCase(unittest.TestCase):
         # 取得用フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user, projects[0].id, flow_uuid)
+        models.create_flow_with_permission(flow_name, user, projects[0].id, flow_uuid)
 
         update_flow_name = '更新用テストフロー'
 
@@ -911,7 +911,7 @@ class ModelTestCase(unittest.TestCase):
         # 削除用フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user,  projects[0].id, flow_uuid)
+        models.create_flow_with_permission(flow_name, user,  projects[0].id, flow_uuid)
 
         # 削除前の確認
         flow = models.fetch_flow_by_uuid(flow_uuid)
@@ -958,7 +958,7 @@ class ModelTestCase(unittest.TestCase):
         # フローの作成
         flow_name = 'テストフロー'
         flow_uuid = 'test'
-        models.create_flow(flow_name, user,  projects[0].id, flow_uuid)
+        models.create_flow_with_permission(flow_name, user,  projects[0].id, flow_uuid)
 
         # 取得
         flow = models.make_dict_from_model(models.fetch_flow_by_uuid(flow_uuid))

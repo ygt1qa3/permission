@@ -11,7 +11,6 @@ from .models import (
     Projects,
     UserPermissions_Project,
     Flows,
-    db,
     get_user_by_id,
     replace_user_email_with_old_email,
     get_projects_with_permission,
@@ -19,10 +18,10 @@ from .models import (
     delete_project,
     get_flows_with_permission,
     get_permissions_project,
-    create_flow,
-    fetch_projects_by_user_id,
+    create_flow_with_permission,
+    fetch_projects,
     fetch_project_by_uuid,
-    fetch_flows_with_permission,
+    fetch_flows,
     create_project
     )
 from .profile import (
@@ -51,7 +50,7 @@ def fetch_projects():
     user = get_user_by_id(session['user_id'])
     # ----------------
 
-    projects = fetch_projects_by_user_id(session['user_id'])
+    projects = fetch_projects(session['user_id'])
     return render_template('projects.html', data=projects, user=user)
 
 @app.route('/projects', methods=['POST'])
@@ -81,8 +80,7 @@ def new_flow():
     if project is None:
         return redirect(url_for('fetch_flows', project=request.form['project_uuid']))
 
-    user = get_user_by_id(session['user_id'])
-    created_result = create_flow(request.form['flow_name'], user, project.id)
+    created_result = create_flow(request.form['flow_name'], session['user_id'], project)
 
     return redirect(url_for('fetch_flows', project=request.form['project_uuid']))
 
@@ -95,7 +93,7 @@ def fetch_flows():
     # ----trial専用----
     user = get_user_by_id(session['user_id'])
     # ----------------
-    flows_with_permission = fetch_flows_with_permission(session['user_id'], request.args.get('project'))
+    flows_with_permission = fetch_flows(session['user_id'], request.args.get('project'))
     return render_template('flows.html', flows=flows_with_permission, user=user)
 
 @app.route('/flows/<flow_uuid>', methods=['GET'])
@@ -117,6 +115,8 @@ def delete_project(flow_uuid):
 def update_project(flow_uuid):
     """
     指定されたフローを更新する
+    フロント側を丁寧に作っていないので、PUT飛んでこないけど
+    まぁ形はこんな感じになるという感じで。
     """
     deleted_result = update_flow(session['user_id'], flow_uuid, request.json)
     return redirect(url_for('fetch_flows', deleted_status=deleted_result))

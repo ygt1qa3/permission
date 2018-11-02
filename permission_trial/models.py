@@ -1,6 +1,5 @@
 from . import db
 import uuid
-import inspect
 import sqlalchemy
 import json
 import ast
@@ -11,7 +10,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 # 最新版のsqlalchemy(2018/10/23現在：ver1.2.12)にはまだ更新されていない模様（Pyplのpkgが更新されていない？）
 # 下記importがエラーになる
 # from sqlalchemy.dialects.sqlite import JSON
-from sqlalchemy.dialects.sqlite import BLOB
 
 class Json(TypeDecorator):
     """
@@ -104,6 +102,7 @@ class Projects(db.Model):
 class Flows(db.Model):
     """
     Flowsモデル
+    他にも入れる必要のあるものあるけど(createdAt)、最低限で…
     """
     __tablename__ = 'flows'
 
@@ -113,6 +112,7 @@ class Flows(db.Model):
         elif db_name == 'sqlite':
             return db.Column(Json)
         else:
+            # 適当
             return db.Column(db.JSON)
 
     # カラム
@@ -247,10 +247,171 @@ class GroupPermissions_Flow(db.Model):
         self.readable_flow = readable_flow
         self.executable_flow = executable_flow
 
+# Region　APIで使うパブリックメソッド
+
+def fetch_projects(user_id):
+    """
+    APIで返すプロジェクト一覧を取得する
+    返す形式：
+        {
+            projects:[
+                {
+                    プロジェクト情報や権限
+                },
+                …
+            ],
+            creatable: True or False（プロジェクト作成できるか）
+        }
+    """
+    data = {}
+
+    projects = get_projects_with_permission(user_id)
+    user = get_user_by_id(user_id)
+
+    data['projects'] = projects
+    data['creatable'] = user.creatable_projects
+
+    return data
+
+def create_project(user_id, project_name):
+    """
+    指定したユーザが作成できるかを調べ、作成可能ならばプロジェクトを作成する
+    返す形式：
+        True or False
+        （Falseの場合はロールバックしてから返す）
+    """
+    user = get_user_by_id(user_id)
+    if not user.creatable_projects:
+        return False
+
+    result = create_project_with_permission(project_name, user_id)
+    return result
+
+def delete_project(user_id, project_uuid):
+    """
+    指定したユーザの権限を調べ、削除可能ならば指定したプロジェクトを削除する
+    返す形式：
+        True or False
+        （Falseの場合はロールバックしてから返す）
+    """
+    # 権限の取得
+    project_permission = get_permissions_project(user_id, project_uuid)
+
+    if project_permission is None:
+        # 指定したユーザと所属しているグループ、プロジェクトの間にはなんの権限もない
+        return False
+
+    if not project_permission.deletable_project:
+        return False
+
+    result = delete_project_with_permission_by_uuid(project_uuid)
+    return result
+
+def fetch_flows(user_id, project_uuid):
+    """
+    APIで返す権限つきフロー一覧を取得する
+    返す形：
+        {
+            flows:[
+                flowモデル,
+                flow各々に対する権限（readable, updatable, executable）
+            ],
+            creatable_flows:（フローを作成できるか）,
+            deletable_flows:（フローを削除できるか）
+        }
+    """
+    # プロジェクトidの取得
+    project = db.session.query(Projects).filter_by(uuid=project_uuid).first()
+
+    # フローの、作成・削除権限を取得する
+    project_permission = get_permissions_project(user_id, project_uuid).__dict__
+    flows = get_flows_with_permission(project.id, user_id)
+    return {'flow':flows, 'edit_permission':{'creatable_flows':project_permission['creatable_flows'],
+                                             'deletable_flows':project_permission['deletable_flows']}}
+
+def create_flow(flow_name, user_id, project, flow_uuid=None):
+    """
+    指定したユーザが作成できるかを調べ、作成可能ならばフローを作成する
+    返す形式：
+        True or False
+        （Falseの場合はロールバックしてから返す）
+    """
+    if not project.creatable_flows:
+        return False
+
+    return create_flow_with_permission(flow_name, get_user_by_id(user_id), project.id)
+
+def fetch_flow(user_id, flow_uuid):
+    """
+    指定したユーザがフロー内容を取得可能であれば、フローを取得する
+    返す形式：
+        {
+            flow_uuid:フローのUUID,
+            json: {
+                フローのjson
+                } ,
+            project_id: プロジェクトのID,
+            creator_id: ユーザのID,
+            …
+        }
+    flow_uuidやproject_idなどはもともとflowのjson内に記述してあったが、外に出してみた。
+    外に出しても良さそうなものは他にもlabelとかcreatedAtかな？
+    """
+    flow_permission = get_permissions_flow(user_id, flow_uuid)
+    if flow_permission is None:
+        return None
+
+    if not flow_permission.readable_flow:
+        return None
+
+    flow_model = fetch_flow_by_uuid(flow_uuid)
+    return make_dict_from_model(flow_model)
+
+def delete_flow(user_id, flow_uuid):
+    """
+    指定したユーザの権限を調べ、削除可能ならば指定したプロジェクトを削除する
+    返す形式：
+        True or False
+        （Falseの場合はロールバックしてから返す）
+    """
+    # 権限の取得
+    # flowのプロジェクトIDを取得
+    flow = fetch_flow_by_uuid(flow_uuid)
+    project_permission = get_permissions_project(user_id, flow.project_id)
+
+    if project_permission is None:
+        # 指定したユーザと所属しているグループ、プロジェクトの間にはなんの権限もない
+        return False
+
+    if not project_permission.deletable_project:
+        return False
+
+    result = delete_flow_with_permission_by_uuid(flow_uuid)
+    return result
+
+def update_flow(user_id, flow_uuid, data):
+    """
+    指定したユーザのフロー更新権限を調べ、更新可能なら更新する
+    返す形式：
+        True or False
+        （Falseの場合はロールバックしてから返す）
+    """
+    flow_permission = get_permissions_flow(user_id, flow_uuid)
+    if flow_permission is None:
+        return False
+
+    if not flow_permission.updatable_flow:
+        return False
+
+    result = update_flow_by_uuid(flow_uuid ,data)
+    return result
+
+# EndRegion　APIで使うパブリックメソッド
+
 def create_user(name, email, password, creatable_projects=True):
     """
     ユーザを作成する
-    プロジェクト作成権限はとりあえず、デフォルトでTrueに。
+    プロジェクト作成権限はとりあえずデフォルトでTrueに。
     """
     user = Users(name, email, password, creatable_projects)
     db.session.add(user)
@@ -316,20 +477,6 @@ def assign_user_to_group(user_id, group_id):
     db.session.add(user)
     db.session.commit()
 
-def fetch_projects_by_user_id(user_id):
-    """
-    APIで返すプロジェクト一覧を取得する
-    """
-    data = {}
-
-    projects = get_projects_with_permission(user_id)
-    user = get_user_by_id(user_id)
-
-    data['projects'] = projects
-    data['creatable'] = user.creatable_projects
-
-    return data
-
 def get_projects_with_permission(user_id):
     """
     プロジェクト一覧を権限付きで返す
@@ -386,24 +533,12 @@ def fetch_readable_projects_by_group_id(group_id):
     """
     指定したグループが閲覧できるプロジェクト一覧を取得する
     型はリスト（行データのリスト）になっている
-    行データは_asdict()でdict化できる
     """
     projects = db.session.query(Projects.id, Projects.name, Projects.uuid, Projects.creator_id,
                                 GroupPermissions_Project.deletable_project, GroupPermissions_Project.readable_flows) \
                                 .join(GroupPermissions_Project, Projects.id==GroupPermissions_Project.project_id) \
                                 .filter(GroupPermissions_Project.group_id==group_id).all()
     return projects
-
-def create_project(user_id, project_name):
-    """
-    指定したユーザが作成できるかを調べ、作成可能ならばプロジェクトを作成する
-    """
-    user = get_user_by_id(user_id)
-    if not user.creatable_projects:
-        return False
-
-    result = create_project_with_permission(project_name, user_id)
-    return result
 
 def create_project_with_permission(project_name, user_id):
     """
@@ -422,7 +557,7 @@ def create_project_with_permission(project_name, user_id):
         return False
 
     # ユーザ×プロジェクト作成
-    # プロジェクト作成をcommitしてからでないと、idを取得できない（できれば一斉にcommitしたい）
+    # プロジェクト作成をcommitしてからでないと、idを取得できない（できれば一斉にcommitしたいなぁ）
     userpermission_project = UserPermissions_Project(user_id, project.id)
     db.session.add(userpermission_project)
 
@@ -484,23 +619,6 @@ def get_grouppermissions_project(group_id, project_id):
     groupproject = db.session.query(GroupPermissions_Project).filter_by(project_id=project_id, group_id=group_id).first()
     return groupproject
 
-def delete_project(user_id, project_uuid):
-    """
-    指定したユーザの権限を調べ、削除可能ならば指定したプロジェクトを削除する
-    """
-    # 権限の取得
-    project_permission = get_permissions_project(user_id, project_uuid)
-
-    if project_permission is None:
-        # 指定したユーザと所属しているグループ、プロジェクトの間にはなんの権限もない
-        return False
-
-    if not project_permission.deletable_project:
-        return False
-
-    result = delete_project_with_permission_by_uuid(project_uuid)
-    return result
-
 def delete_project_with_permission_by_uuid(project_uuid):
     """
     指定したプロジェクトを削除する
@@ -527,11 +645,66 @@ def fetch_project_by_uuid(poject_uuid):
     project = db.session.query(Projects).filter_by(uuid=poject_uuid).first()
     return project
 
-def create_flow(flow_name, user, project_id, flow_uuid=None):
+def get_flows_with_permission(project_id, user_id):
+    """
+    フロー一覧を権限付きで返す
+    """
+    flows = []
+    flow_uuid_list = []
+
+    # ユーザ権限がついたフローを取得する
+    flows_additional_user_permissions = fetch_readable_flows_by_project_id_and_user_id(project_id, user_id)
+    for flow in flows_additional_user_permissions:
+        flow_uuid_list.append(flow.uuid)
+        flows.append(flow._asdict())
+
+    # グループに所属しているか
+    group = get_group_from_user_id(user_id)
+    if group is None:
+        return flows
+
+    # グループ権限がついたフローを取得する
+    flows_additional_group_permissions = fetch_readable_flows_by_project_id_and_group_id(project_id, group.id)
+    if flows_additional_group_permissions is None:
+        return flows
+
+    # ユーザ×プロジェクトに存在しないフローを新規に追加する
+    for flow in flows_additional_group_permissions:
+        flow_dict = flow._asdict()
+        if not flow_dict.get('uuid') in flow_uuid_list:
+            flows.append(flow_dict)
+    return flows
+
+def fetch_readable_flows_by_project_id_and_user_id(project_id, user_id):
+    """
+    指定したプロジェクトが持ち、指定したユーザが見れるフロー一覧の内容リストをuuidを付け加えて返す
+    """
+    flows = db.session.query(Flows.uuid, Flows.json, Flows.creator_id, Flows.project_id,
+                             UserPermissions_Flow.readable_flow, UserPermissions_Flow.updatable_flow, UserPermissions_Flow.executable_flow) \
+                                .join(UserPermissions_Flow, Flows.uuid==UserPermissions_Flow.flow_uuid) \
+                                .filter(UserPermissions_Flow.user_id==user_id, Flows.project_id==project_id).all()
+
+    return flows
+
+def fetch_readable_flows_by_project_id_and_group_id(project_id, group_id):
+    """
+    指定したプロジェクトが持ち、指定したグループが見れるフロー一覧の内容リストをuuidを付け加えて返す
+    """
+    flows = db.session.query(Flows.uuid, Flows.json, Flows.creator_id, Flows.project_id,
+                             UserPermissions_Flow.readable_flow, UserPermissions_Flow.updatable_flow, UserPermissions_Flow.executable_flow) \
+                                .join(GroupPermissions_Flow, Flows.uuid==GroupPermissions_Flow.flow_uuid) \
+                                .filter(GroupPermissions_Flow.group_id==group_id, Flows.project_id==project_id).all()
+
+    return flows
+
+def create_flow_with_permission(flow_name, user, project_id, flow_uuid=None):
     """
     新規フローを作成し、DBに保存する
     それと同時にユーザ×フローも作成する
     また、ユーザがグループに所属していた場合、グループ×フローも作成する
+    返す形式：
+        True or False
+        （Falseの場合はロールバックしてから返す）
     """
     if flow_uuid is None:
         flow_uuid = str(uuid.uuid4())
@@ -573,113 +746,12 @@ def create_flow(flow_name, user, project_id, flow_uuid=None):
 
     return True
 
-def fetch_flows_with_permission(user_id, project_uuid):
-    """
-    権限つきフロー一覧を適切な形で返す
-    パブリックメソッド
-    """
-    # プロジェクトidの取得
-    project = db.session.query(Projects).filter_by(uuid=project_uuid).first()
-
-    # フローの、作成・削除権限を取得する
-    project_permission = get_permissions_project(user_id, project_uuid).__dict__
-    flows = get_flows_with_permission(project.id, user_id)
-
-    return {'flow':flows, 'edit_permission':{'creatable_flows':project_permission['creatable_flows'],
-                                             'deletable_flows':project_permission['deletable_flows']}}
-
-def get_flows_with_permission(project_id, user_id):
-    """
-    フロー一覧を権限付きで返す
-    """
-    flows = []
-    flow_uuid_list = []
-
-    # ユーザ権限がついたフローを取得する
-    flows_additional_user_permissions = fetch_readable_flows_by_project_id_and_user_id(project_id, user_id)
-    for flow in flows_additional_user_permissions:
-        flow_uuid_list.append(flow.uuid)
-        flows.append(flow._asdict())
-
-    # グループに所属しているか
-    group = get_group_from_user_id(user_id)
-    if group is None:
-        return flows
-
-    # グループ権限がついたフローを取得する
-    flows_additional_group_permissions = fetch_readable_flows_by_project_id_and_group_id(project_id, group.id)
-    if flows_additional_group_permissions is None:
-        return flows
-
-    # ユーザ×プロジェクトに存在しないフローを新規に追加する
-    for flow in flows_additional_group_permissions:
-        flow_dict = flow._asdict()
-        if not flow_dict.get('uuid') in flow_uuid_list:
-            flows.append(flow_dict)
-
-    return flows
-
-def fetch_readable_flows_by_project_id_and_user_id(project_id, user_id):
-    """
-    指定したプロジェクトが持ち、指定したユーザが見れるフロー一覧の内容リストをuuidを付け加えて返す
-    """
-    flows = db.session.query(Flows.uuid, Flows.json, Flows.creator_id, Flows.project_id,
-                             UserPermissions_Flow.readable_flow, UserPermissions_Flow.updatable_flow, UserPermissions_Flow.executable_flow) \
-                                .join(UserPermissions_Flow, Flows.uuid==UserPermissions_Flow.flow_uuid) \
-                                .filter(UserPermissions_Flow.user_id==user_id, Flows.project_id==project_id).all()
-
-    return flows
-
-def fetch_readable_flows_by_project_id_and_group_id(project_id, group_id):
-    """
-    指定したプロジェクトが持ち、指定したグループが見れるフロー一覧の内容リストをuuidを付け加えて返す
-    """
-    flows = db.session.query(Flows.uuid, Flows.json, Flows.creator_id, Flows.project_id,
-                             UserPermissions_Flow.readable_flow, UserPermissions_Flow.updatable_flow, UserPermissions_Flow.executable_flow) \
-                                .join(GroupPermissions_Flow, Flows.uuid==GroupPermissions_Flow.flow_uuid) \
-                                .filter(GroupPermissions_Flow.group_id==group_id, Flows.project_id==project_id).all()
-
-    return flows
-
-def fetch_flow(user_id, flow_uuid):
-    """
-    指定したユーザがフロー内容を取得可能であれば、フローを取得する
-    """
-    flow_permission = get_permissions_flow(user_id, flow_uuid)
-    if flow_permission is None:
-        return None
-
-    if not flow_permission.readable_flow:
-        return None
-
-    flow_model = fetch_flow_by_uuid(flow_uuid)
-    return make_dict_from_model(flow_model)
-
 def fetch_flow_by_uuid(flow_uuid):
     """
     指定したフローのモデルオブジェクトを返す
     """
     flow = db.session.query(Flows).filter_by(uuid=flow_uuid).first()
     return flow
-
-def delete_flow(user_id, flow_uuid):
-    """
-    指定したユーザの権限を調べ、削除可能ならば指定したプロジェクトを削除する
-    """
-    # 権限の取得
-    # flowのプロジェクトIDを取得
-    flow = fetch_flow_by_uuid(flow_uuid)
-    project_permission = get_permissions_project(user_id, flow.project_id)
-
-    if project_permission is None:
-        # 指定したユーザと所属しているグループ、プロジェクトの間にはなんの権限もない
-        return False
-
-    if not project_permission.deletable_project:
-        return False
-
-    result = delete_flow_with_permission_by_uuid(flow_uuid)
-    return result
 
 def delete_flow_with_permission_by_uuid(flow_uuid):
     """
@@ -697,20 +769,6 @@ def delete_flow_with_permission_by_uuid(flow_uuid):
         return False
 
     return True
-
-def update_flow(user_id, flow_uuid, data):
-    """
-    指定したユーザのフロー更新権限を調べ、更新可能なら更新する
-    """
-    flow_permission = get_permissions_flow(user_id, flow_uuid)
-    if flow_permission is None:
-        return False
-
-    if not flow_permission.updatable_flow:
-        return False
-
-    result = update_flow_by_uuid(flow_uuid ,data)
-    return result
 
 def update_flow_by_uuid(flow_uuid, data):
     """
@@ -769,13 +827,6 @@ def get_grouppermissions_flow(group_id, flow_uuid):
     groupproject = db.session.query(GroupPermissions_Flow).filter_by(group_id=group_id, flow_uuid=flow_uuid).first()
     return groupproject
 
-def get_flow_by_flow_items(flow_items):
-    """
-    指定したフローの要素からフローを取得する
-    使う道があるかどうかわからない
-    """
-    pass
-
 def grant_user_to_project(user_id, project_id, deletable_project=True, creatable_flows=True,
                                deletable_flows=True, updatable_flows=True, executable_flows=True, readable_flows=True):
     """
@@ -800,19 +851,6 @@ def grant_group_to_project(group_id, project_id, deletable_project=False, creata
 
 def make_dict_from_model(model):
     """
-    指定したsqlalchemyのresultオブジェクトをdictに変換する
+    指定したsqlalchemyのmodelオブジェクトをdictに変換する
     """
     return { column.name : getattr(model, column.name) for column in model.__table__.columns }
-
-# def make_projects_dict_from_flows_result(result):
-#     """
-#     指定したsqlalchemyのflowsのresultオブジェクトをdictに変換する
-#     jsonは文字列で取得されるため、dictに変換している
-#     """
-#     dict = {}
-#     for table_model in result:
-#         dict.update(
-#             { column.name : json.loads(getattr(table_model, column.name)) if column.name == 'json' else getattr(table_model, column.name) \
-#                            for column in table_model.__table__.columns }
-#         )
-#     return dict
